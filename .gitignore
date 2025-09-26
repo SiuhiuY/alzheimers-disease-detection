@@ -117,3 +117,5 @@ dmypy.json
 # Project specific ignores
 data/
 Tutorials/
+*.fif
+*.set
