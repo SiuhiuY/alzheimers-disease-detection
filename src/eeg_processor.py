@@ -20,8 +20,10 @@ class EEGProcessor:
         return self.raw
 
 if __name__ == "__main__":
-    data_folder = "E:/EEG"
+    data_folder = os.path.join(os.environ["HOME"], "EEG")
     file_path = "derivatives/sub-001/eeg/sub-001_task-eyesclosed_eeg.set"
+    if not os.path.exists(os.path.join(data_folder, file_path)):
+        data_folder = "E:/EEG"
     processor = EEGProcessor(data_folder, file_path)
     raw_data = processor.load_data()
     print(raw_data)
