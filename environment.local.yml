@@ -1,0 +1,15 @@
+name: thesis
+channels:
+  - defaults
+dependencies:
+  - python=3
+  - conda-forge::numpy
+  - conda-forge::opencv
+  - conda-forge::scipy
+  - conda-forge::keras
+  - conda-forge::wandb
+  - conda-forge::optuna
+  - conda-forge::pandas
+  - conda-forge::pytest
+  - conda-forge::seaborn
+  - conda-forge::jupyterlab
