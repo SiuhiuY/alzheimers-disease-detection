@@ -99,10 +99,13 @@ class EEGProcessor:
 
 
 if __name__ == "__main__":
-    data_folder = os.path.join(os.path.expanduser("~"), "EEG")
+    ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+    data_folder = os.path.join(ROOT_DIR, "..", "data")
     file_path = "derivatives/sub-001/eeg/sub-001_task-eyesclosed_eeg.set"
-    if not os.path.exists(os.path.join(data_folder, file_path)):
-        data_folder = "E:/EEG"
+    # data_folder = os.path.join(os.path.expanduser("~"), "EEG")
+    # file_path = "derivatives/sub-001/eeg/sub-001_task-eyesclosed_eeg.set"
+    # if not os.path.exists(os.path.join(data_folder, file_path)):
+    #     data_folder = "E:/EEG"
     processor = EEGProcessor(data_folder, file_path)
     raw_data = processor.load_data()
     epochs_data = processor.epoch_data()
