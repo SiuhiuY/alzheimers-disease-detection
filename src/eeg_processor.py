@@ -1,7 +1,7 @@
 import os
 import mne
 import numpy as np
-from scipy.interpolate import griddata
+from scipy.interpolate import RectBivariateSpline
 
 
 class EEGProcessor:
@@ -61,21 +61,24 @@ class EEGProcessor:
         """Compute the Power Spectral Density (PSD) of the epochs.
 
         Args:
-            band (str): Frequency band of interest.
             fmin (float): Minimum frequency of interest.
             fmax (float): Maximum frequency of interest.
         Returns:
-            tuple: (psds, freqs) where psds is the PSD values and
-                freqs are the corresponding frequencies.
+            tuple: (psds, freqs, ch_names) where psds is the PSD values and
+                freqs are the corresponding frequencies
+                and ch_names are the channel names.
         """
         psd = self.epochs.compute_psd(
             method="welch",
             fmin=fmin,
             fmax=fmax)
-        psds, freqs = psd.get_data(return_freqs=True)
-        return psds, freqs
+        ch_names = psd.info['ch_names']  # Get channel names
 
-    def compute_band_power(self, band="alpha", psds=None, freqs=None):
+        # psds.shape: (n_epochs, n_channels, n_freqs)
+        psds, freqs = psd.get_data(return_freqs=True)
+        return psds, freqs, ch_names
+
+    def compute_band_psd(self, band="alpha", psds=None, freqs=None):
         """Compute the average power in standard EEG frequency bands.
 
         Args:
@@ -83,7 +86,7 @@ class EEGProcessor:
             psds (np.ndarray): Power Spectral Density values.
             freqs (np.ndarray): Corresponding frequencies.
         Returns:
-            np.ndarray: Average power in the specified frequency band.
+            np.ndarray: PSD values in the specified frequency band.
         """
         bands = {
             'delta': (0.5, 4),
@@ -92,25 +95,90 @@ class EEGProcessor:
             'beta': (13, 30),
             'gamma': (30, 40)
         }
+
+        # Get frequency band mask
         fmin, fmax = bands.get(band)
         mask = (freqs >= fmin) & (freqs <= fmax)
-        band_power = psds[:, :, mask].mean(axis=-1)
-        return band_power
+
+        # band_psd.shape: (n_epochs, n_channels)
+        band_psd = psds[:, :, mask].mean(axis=-1)
+        return band_psd
+
+    def map_channel_locations(self, band_psd, ch_names):
+        """Map EEG channel locations to 2D coordinates.
+
+        Args:
+            band_psd (np.ndarray): Band power values with shape (n_epochs, n_channels).
+            ch_names (list): List of channel names.
+        Returns:
+            np.ndarray: 2D coordinates of EEG channels.
+        """
+        n_epochs = band_psd.shape[0]
+        mapped_data = np.zeros((n_epochs, 5, 5))
+
+        # Create a 5x5 grid for standard 10-20 system channels
+        grid_mapping = {
+            "Fp1": (0, 1), "Fp2": (0, 3),
+            "F7": (1, 0), "F3": (1, 1), "Fz": (1, 2), "F4": (1, 3), "F8": (1, 4),
+            "T3": (2, 0), "C3": (2, 1), "Cz": (2, 2), "C4": (2, 3), "T4": (2, 4),
+            "T5": (3, 0), "P3": (3, 1), "Pz": (3, 2), "P4": (3, 3), "T6": (3, 4),
+            "O1": (4, 1), "O2": (4, 3)
+        }
+
+        # Map the PSD values onto the grid
+        for epoch_ind, epoch in enumerate(band_psd):
+            grid = np.zeros((5, 5))
+            for ch_index, ch_name in enumerate(ch_names):
+                x, y = grid_mapping.get(ch_name)
+                grid[x, y] = epoch[ch_index]
+            mapped_data[epoch_ind] = grid
+        return mapped_data
+
+    def interpolate(self, mapped_data, grid_size=(32, 32)):
+        """Interpolate the 2D grid data for spatial smoothing.
+
+        Args:
+            mapped_data (np.ndarray): 2D grid data with shape (n_epochs, rows, cols).
+            grid_size (tuple): Size of the output grid (rows, cols).
+        Returns:
+            np.ndarray: Interpolated data on a 2D grid.
+        """
+        n_epochs, rows, cols = mapped_data.shape
+
+        # Original grid coordinates
+        x = np.linspace(0, rows-1, rows)
+        y = np.linspace(0, cols-1, cols)
+
+        # New grid coordinates
+        xi = np.linspace(0, rows-1, grid_size[0])
+        yi = np.linspace(0, cols-1, grid_size[1])
+
+        # Initialise empty array for interpolated data
+        interpolated_data = np.zeros((n_epochs, grid_size[0], grid_size[1]))
+
+        for epoch_ind in range(n_epochs):
+            # Create the spline interpolation function
+            interp = RectBivariateSpline(
+                y, x,
+                mapped_data[epoch_ind]
+            )
+            # Interpolate to new grid
+            interpolated_data[epoch_ind] = interp(yi, xi)
+        return interpolated_data
+
 
 
 if __name__ == "__main__":
     ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
     data_folder = os.path.join(ROOT_DIR, "..", "data")
     file_path = "derivatives/sub-001/eeg/sub-001_task-eyesclosed_eeg.set"
-    # data_folder = os.path.join(os.path.expanduser("~"), "EEG")
-    # file_path = "derivatives/sub-001/eeg/sub-001_task-eyesclosed_eeg.set"
-    # if not os.path.exists(os.path.join(data_folder, file_path)):
-    #     data_folder = "E:/EEG"
     processor = EEGProcessor(data_folder, file_path)
     raw_data = processor.load_data()
     epochs_data = processor.epoch_data()
-    psds, freqs = processor.compute_psd()
-    band_power = processor.compute_band_power(band="alpha", psds=psds, freqs=freqs)
-    print(psds.shape)
-    print(freqs)
-    print(band_power.shape)
+    psds, freqs, ch_names = processor.compute_psd()
+    band_psd = processor.compute_band_psd(band="alpha", psds=psds, freqs=freqs)
+    grid = processor.map_channel_locations(band_psd, ch_names)
+    interpolated_grid = processor.interpolate(grid, grid_size=(32, 32))
+    print(interpolated_grid.shape)
+    print(interpolated_grid[:3])
+
