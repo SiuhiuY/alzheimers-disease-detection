@@ -10,9 +10,6 @@ class EEGProcessor:
     Attributes:
         data_folder (str): Path to the folder containing EEG data.
         file_path (str): Path to the EEG data file.
-        raw (mne.io.Raw): Raw EEG data.
-        epochs (mne.Epochs): Epoched EEG data.
-        sfreq (float): Sampling frequency of the EEG data.
     """
 
     def __init__(self, data_folder, file_path):
@@ -108,7 +105,8 @@ class EEGProcessor:
         """Map EEG channel locations to 2D coordinates.
 
         Args:
-            band_psd (np.ndarray): Band power values with shape (n_epochs, n_channels).
+            band_psd (np.ndarray): Band power values with shape
+                (n_epochs, n_channels).
             ch_names (list): List of channel names.
         Returns:
             np.ndarray: 2D coordinates of EEG channels.
@@ -128,6 +126,7 @@ class EEGProcessor:
         # Map the PSD values onto the grid
         for epoch_ind, epoch in enumerate(band_psd):
             grid = np.zeros((5, 5))
+            # Match channel names to grid positions
             for ch_index, ch_name in enumerate(ch_names):
                 x, y = grid_mapping.get(ch_name)
                 grid[x, y] = epoch[ch_index]
@@ -138,7 +137,8 @@ class EEGProcessor:
         """Interpolate the 2D grid data for spatial smoothing.
 
         Args:
-            mapped_data (np.ndarray): 2D grid data with shape (n_epochs, rows, cols).
+            mapped_data (np.ndarray): 2D grid data with shape
+                (n_epochs, rows, cols).
             grid_size (tuple): Size of the output grid (rows, cols).
         Returns:
             np.ndarray: Interpolated data on a 2D grid.
@@ -159,13 +159,31 @@ class EEGProcessor:
         for epoch_ind in range(n_epochs):
             # Create the spline interpolation function
             interp = RectBivariateSpline(
-                y, x,
+                x, y,
                 mapped_data[epoch_ind]
             )
             # Interpolate to new grid
-            interpolated_data[epoch_ind] = interp(yi, xi)
+            interpolated_data[epoch_ind] = interp(xi, yi)
         return interpolated_data
 
+    def sliding_window(self, interpolated_data, window_size=3, step_size=1):
+        """Apply sliding window to the data.
+
+        Args:
+            interpolated_data (np.ndarray): Input data with shape
+                (n_epochs, 32, 32).
+            window_size (int): Size of the sliding window.
+            step_size (int): Step size for the sliding window.
+        Returns:
+            np.ndarray: Data after applying sliding window.
+        """
+        n_epochs = interpolated_data.shape[0]
+        windows = []
+        for start in range(0, n_epochs - window_size + 1, step_size):
+            end = start + window_size
+            window = interpolated_data[start:end]  # Shape: (window_size, 32, 32)
+            windows.append(window)  # Shape: (n_windows, window_size, 32, 32)
+        return np.array(windows)
 
 
 if __name__ == "__main__":
@@ -179,6 +197,7 @@ if __name__ == "__main__":
     band_psd = processor.compute_band_psd(band="alpha", psds=psds, freqs=freqs)
     grid = processor.map_channel_locations(band_psd, ch_names)
     interpolated_grid = processor.interpolate(grid, grid_size=(32, 32))
-    print(interpolated_grid.shape)
-    print(interpolated_grid[:3])
-
+    sliding_windows = processor.sliding_window(
+        interpolated_grid, window_size=3, step_size=1)
+    print(sliding_windows.shape)
+    print(sliding_windows[0])
