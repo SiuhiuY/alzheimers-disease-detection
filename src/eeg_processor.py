@@ -5,37 +5,42 @@ from scipy.interpolate import RectBivariateSpline
 
 
 class EEGProcessor:
-    """Class to handle EEG data processing.
-
-    Attributes:
-        data_folder (str): Path to the folder containing EEG data.
-        file_path (str): Path to the EEG data file.
-    """
+    """Class to transform EEG signals into image-like topomaps."""
 
     def __init__(self, data_folder, file_path):
-        """
-        Initialize the EEGProcessor with data folder and file path.
+        """Initialize the EEGProcessor with data folder and file path.
 
         Args:
             data_folder (str): Path to the folder containing EEG data.
-            file_path (str): Path to the EEG data file.
+            file_path (str): Path to the file of a specific subject.
+
+        Raises:
+            ValueError: If data_folder or file_path is not provided.
         """
+        if data_folder is None or file_path is None:
+            raise ValueError("data_folder and file_path must be provided.")
         self.data_folder = data_folder
         self.file_path = file_path
-        self.raw = None
-        self.epochs = None
+
+    def __repr__(self):
+        """String representation of the EEGProcessor.
+        """
+        return (f"EEGProcessor(data_folder={self.data_folder}, "
+                f"file_path={self.file_path})")
 
     def load_data(self):
         """Load EEG data from a given file path.
 
         Returns:
-            mne.io.Raw: Loaded raw EEG data."""
-        self.raw = mne.io.read_raw_eeglab(
-            os.path.join(
-                self.data_folder,
-                self.file_path
-            ),
-            preload=True)
+            mne.io.Raw: Loaded EEG signals.
+
+        Raises:
+            FileNotFoundError: If the specified file does not exist.
+        """
+        full_path = os.path.join(self.data_folder, self.file_path)
+        if not os.path.exists(full_path):
+            raise FileNotFoundError(f"File {full_path} does not exist.")
+        self.raw = mne.io.read_raw_eeglab(full_path, preload=True)
         return self.raw
 
     def epoch_data(self, duration=1.0, overlap=0.0):
@@ -44,6 +49,7 @@ class EEGProcessor:
         Args:
             duration (float): Duration of each epoch in seconds.
             overlap (float): Overlap between consecutive epochs in seconds.
+
         Returns:
             mne.Epochs: Epoched EEG data.
         """
@@ -54,36 +60,37 @@ class EEGProcessor:
             preload=True)
         return self.epochs
 
-    def compute_psd(self, fmin=0.5, fmax=40):
+    def compute_psd(self):
         """Compute the Power Spectral Density (PSD) of the epochs.
 
-        Args:
-            fmin (float): Minimum frequency of interest.
-            fmax (float): Maximum frequency of interest.
         Returns:
-            tuple: (psds, freqs, ch_names) where psds is the PSD values and
+            tuple: (psds, freqs, ch_names) where psds is the PSD values,
                 freqs are the corresponding frequencies
                 and ch_names are the channel names.
         """
-        psd = self.epochs.compute_psd(
+        self.psd = self.epochs.compute_psd(
             method="welch",
-            fmin=fmin,
-            fmax=fmax)
-        ch_names = psd.info['ch_names']  # Get channel names
+            fmin=0.5,
+            fmax=40)
+        self.ch_names = self.psd.info['ch_names']  # Get channel names
 
+        # Convert PSD to numpy arrays with .get_data()
         # psds.shape: (n_epochs, n_channels, n_freqs)
-        psds, freqs = psd.get_data(return_freqs=True)
-        return psds, freqs, ch_names
+        # freqs.shape: (n_freqs, )
+        self.psds, self.freqs = self.psd.get_data(return_freqs=True)
+        return self.psds, self.freqs, self.ch_names
 
-    def compute_band_psd(self, band="alpha", psds=None, freqs=None):
+    def compute_band_psd(self, band="alpha"):
         """Compute the average power in standard EEG frequency bands.
 
         Args:
             band (str): Frequency band of interest.
-            psds (np.ndarray): Power Spectral Density values.
-            freqs (np.ndarray): Corresponding frequencies.
+
         Returns:
             np.ndarray: PSD values in the specified frequency band.
+
+        Raises:
+            ValueError: If an invalid band name is provided.
         """
         bands = {
             'delta': (0.5, 4),
@@ -93,26 +100,33 @@ class EEGProcessor:
             'gamma': (30, 40)
         }
 
+        if band not in bands:
+            raise ValueError(
+                f"Invalid band name. "
+                f"Choose from {list(bands.keys())}."
+            )
+
         # Get frequency band mask
         fmin, fmax = bands.get(band)
-        mask = (freqs >= fmin) & (freqs <= fmax)
+        mask = (self.freqs >= fmin) & (self.freqs <= fmax)
 
+        # Average PSD across the selected frequency bins
+        # (collapse last dimension)
         # band_psd.shape: (n_epochs, n_channels)
-        band_psd = psds[:, :, mask].mean(axis=-1)
-        return band_psd
+        self.band_psd = self.psds[:, :, mask].mean(axis=-1)
+        return self.band_psd
 
-    def map_channel_locations(self, band_psd, ch_names):
-        """Map EEG channel locations to 2D coordinates.
+    def map_channel_locations(self):
+        """Map EEG channel locations to a 5x5 grid.
 
-        Args:
-            band_psd (np.ndarray): Band power values with shape
-                (n_epochs, n_channels).
-            ch_names (list): List of channel names.
         Returns:
-            np.ndarray: 2D coordinates of EEG channels.
+            np.ndarray: 5x5 grids for each epoch with mapped PSD values.
+
+        Raises:
+            KeyError: If a channel name is not found in the grid mapping.
         """
-        n_epochs = band_psd.shape[0]
-        mapped_data = np.zeros((n_epochs, 5, 5))
+        n_epochs = self.band_psd.shape[0]
+        self.mapped_data = np.zeros((n_epochs, 5, 5))
 
         # Create a 5x5 grid for standard 10-20 system channels
         grid_mapping = {
@@ -124,26 +138,29 @@ class EEGProcessor:
         }
 
         # Map the PSD values onto the grid
-        for epoch_ind, epoch in enumerate(band_psd):
+        for epoch_ind, epoch in enumerate(self.band_psd):
             grid = np.zeros((5, 5))
             # Match channel names to grid positions
-            for ch_index, ch_name in enumerate(ch_names):
+            for ch_index, ch_name in enumerate(self.ch_names):
+                if ch_name not in grid_mapping:
+                    raise KeyError(f"Channel {ch_name} not in grid mapping.")
                 x, y = grid_mapping.get(ch_name)
                 grid[x, y] = epoch[ch_index]
-            mapped_data[epoch_ind] = grid
-        return mapped_data
+            self.mapped_data[epoch_ind] = grid
 
-    def interpolate(self, mapped_data, grid_size=(32, 32)):
+        # output shape: (n_epochs, 5, 5)
+        return self.mapped_data
+
+    def interpolate(self, grid_size=(32, 32)):
         """Interpolate the 2D grid data for spatial smoothing.
 
         Args:
-            mapped_data (np.ndarray): 2D grid data with shape
-                (n_epochs, rows, cols).
             grid_size (tuple): Size of the output grid (rows, cols).
+
         Returns:
-            np.ndarray: Interpolated data on a 2D grid.
+            np.ndarray: Interpolated data
         """
-        n_epochs, rows, cols = mapped_data.shape
+        n_epochs, rows, cols = self.mapped_data.shape
 
         # Original grid coordinates
         x = np.linspace(0, rows-1, rows)
@@ -154,36 +171,43 @@ class EEGProcessor:
         yi = np.linspace(0, cols-1, grid_size[1])
 
         # Initialise empty array for interpolated data
-        interpolated_data = np.zeros((n_epochs, grid_size[0], grid_size[1]))
+        self.interpolated_data = np.zeros(
+            (n_epochs, grid_size[0], grid_size[1])
+        )
 
         for epoch_ind in range(n_epochs):
             # Create the spline interpolation function
             interp = RectBivariateSpline(
                 x, y,
-                mapped_data[epoch_ind]
+                self.mapped_data[epoch_ind]
             )
             # Interpolate to new grid
-            interpolated_data[epoch_ind] = interp(xi, yi)
-        return interpolated_data
+            self.interpolated_data[epoch_ind] = interp(xi, yi)
 
-    def sliding_window(self, interpolated_data, window_size=3, step_size=1):
+        # output shape: (n_epochs, 32, 32)
+        return self.interpolated_data
+
+    def sliding_window(self, window_size=3, step_size=1):
         """Apply sliding window to the data.
 
         Args:
-            interpolated_data (np.ndarray): Input data with shape
-                (n_epochs, 32, 32).
             window_size (int): Size of the sliding window.
             step_size (int): Step size for the sliding window.
+
         Returns:
             np.ndarray: Data after applying sliding window.
         """
-        n_epochs = interpolated_data.shape[0]
+        n_epochs = self.interpolated_data.shape[0]
         windows = []
         for start in range(0, n_epochs - window_size + 1, step_size):
             end = start + window_size
-            window = interpolated_data[start:end]  # Shape: (window_size, 32, 32)
-            windows.append(window)  # Shape: (n_windows, window_size, 32, 32)
-        return np.array(windows)
+            # shape: (window_size, 32, 32)
+            window = self.interpolated_data[start:end]
+            windows.append(window)
+
+        # output shape: (n_windows, window_size, 32, 32)
+        self.windows = np.array(windows)
+        return self.windows
 
 
 if __name__ == "__main__":
@@ -191,13 +215,12 @@ if __name__ == "__main__":
     data_folder = os.path.join(ROOT_DIR, "..", "data")
     file_path = "derivatives/sub-001/eeg/sub-001_task-eyesclosed_eeg.set"
     processor = EEGProcessor(data_folder, file_path)
-    raw_data = processor.load_data()
-    epochs_data = processor.epoch_data()
-    psds, freqs, ch_names = processor.compute_psd()
-    band_psd = processor.compute_band_psd(band="alpha", psds=psds, freqs=freqs)
-    grid = processor.map_channel_locations(band_psd, ch_names)
-    interpolated_grid = processor.interpolate(grid, grid_size=(32, 32))
-    sliding_windows = processor.sliding_window(
-        interpolated_grid, window_size=3, step_size=1)
-    print(sliding_windows.shape)
-    print(sliding_windows[0])
+    processor.load_data()
+    processor.epoch_data()
+    processor.compute_psd()
+    processor.compute_band_psd()
+    processor.map_channel_locations()
+    processor.interpolate()
+    sliding_windows = processor.sliding_window()
+    print(processor)
+    print("Sliding windows shape:", sliding_windows.shape)
