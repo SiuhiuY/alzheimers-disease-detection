@@ -5,8 +5,7 @@ pytest:
   stage: test
   tags:
     - test-runner
-  image: continuumio/miniconda3
   script:
-    - conda env create -f environment.local.yml -n thesis
-    - source activate thesis
+    - echo "Activating conda environment..."
+    - conda activate thesis
     - pytest -v
