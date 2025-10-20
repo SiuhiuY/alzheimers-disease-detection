@@ -5,7 +5,8 @@ pytest:
   stage: test
   tags:
     - test-runner
+  before_script:
+    - $env:Path += ";C:\Users\xiaox\anaconda3\Scripts;C:\Users\xiaox\anaconda3"
   script:
-    - echo "Activating conda environment..."
-    - conda activate thesis
-    - pytest -v
+    - echo "Running tests in 'thesis' environment..."
+    - conda run -n thesis pytest -v
