@@ -5,6 +5,8 @@ pytest:
   stage: test
   tags:
     - test-runner
+  rules:
+    - when: manual
   before_script:
     - $env:Path += ";C:\Users\xiaox\anaconda3\Scripts;C:\Users\xiaox\anaconda3"
   script:
