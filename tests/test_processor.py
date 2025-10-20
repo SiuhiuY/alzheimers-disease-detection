@@ -20,6 +20,9 @@ def processor():
     proc.interpolate()
     proc.sliding_window()
 
+    # Get number of epochs for later tests
+    proc.n_epochs = proc.epochs.get_data().shape[0]
+
     return proc
 
 
@@ -85,7 +88,7 @@ def test_compute_band_psd(processor):
 
     # Check band_psd shape: (n_epochs, n_channels)
     assert processor.band_psd.ndim == 2
-    assert processor.band_psd.shape[0] == processor.epochs.get_data().shape[0]
+    assert processor.band_psd.shape[0] == processor.n_epochs
     assert processor.band_psd.shape[1] == 19
 
 
@@ -101,7 +104,7 @@ def test_map_channel_locations(processor):
 
     # Check the shape of the mapped data: (n_epochs, 5, 5)
     assert processor.mapped_data.ndim == 3
-    assert processor.mapped_data.shape[0] == processor.epochs.get_data().shape[0]
+    assert processor.mapped_data.shape[0] == processor.n_epochs
     assert processor.mapped_data.shape[1:] == (5, 5)
 
     # Ensure each grid has nonzero mapped values
@@ -129,7 +132,7 @@ def test_interpolate(processor):
 
     # Check the shape of the interpolated data: (n_epochs, 32, 32)
     assert processor.interpolated_data.ndim == 3
-    assert processor.interpolated_data.shape[0] == processor.epochs.get_data().shape[0]
+    assert processor.interpolated_data.shape[0] == processor.n_epochs
     assert processor.interpolated_data.shape[1:] == (32, 32)
 
     # Ensure each interpolated grid has nonzero values
