@@ -122,7 +122,8 @@ def test_process_single_subject(sub_processor, tmp_path):
     sub_processor.prepare_output_folder()
 
     # Use the first subject directory for testing
-    subject_dir = sub_processor.subject_dirs[0]
+    subject = sub_processor.subject_dirs[0]
+    subject_dir = os.path.join(sub_processor.PROCESSED_DIR, subject)
     subject_id = os.path.basename(subject_dir)
     subject_path = os.path.join(
         subject_dir, "eeg",
