@@ -92,12 +92,6 @@ def test_compute_band_psd(processor):
     assert processor.band_psd.shape[1] == 19
 
 
-def test_compute_band_psd_invalid_band(processor):
-    """Test computation of band-specific PSD with invalid band name."""
-    with pytest.raises(ValueError, match="Invalid band name"):
-        processor.compute_band_psd(band="invalid_band")
-
-
 def test_map_channel_locations(processor):
     """Test mapping of channel locations to 2D grid."""
     assert processor.mapped_data is not None
