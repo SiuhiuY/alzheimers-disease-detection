@@ -5,7 +5,23 @@ from scipy.interpolate import RectBivariateSpline
 
 
 class EEGProcessor:
-    """Class to transform EEG signals into image-like topomaps."""
+    """Class to transform EEG signals into image-like topomaps.
+
+    This class provides methods to load EEG data, epoch it,
+    compute power spectral density (PSD), map channel locations,
+    interpolate the data, and apply sliding windows.
+
+    Attributes:
+        VALID_BANDS (dict): Standard EEG frequency bands and their ranges.
+    """
+
+    VALID_BANDS = {
+            'delta': (0.5, 4),
+            'theta': (4, 8),
+            'alpha': (8, 13),
+            'beta': (13, 30),
+            'gamma': (30, 40)
+        }
 
     def __init__(self, data_folder, file_path):
         """Initialize the EEGProcessor with data folder and file path.
@@ -92,22 +108,9 @@ class EEGProcessor:
         Raises:
             ValueError: If an invalid band name is provided.
         """
-        bands = {
-            'delta': (0.5, 4),
-            'theta': (4, 8),
-            'alpha': (8, 13),
-            'beta': (13, 30),
-            'gamma': (30, 40)
-        }
-
-        if band not in bands:
-            raise ValueError(
-                f"Invalid band name. "
-                f"Choose from {list(bands.keys())}."
-            )
 
         # Get frequency band mask
-        fmin, fmax = bands.get(band)
+        fmin, fmax = self.VALID_BANDS.get(band)
         mask = (self.freqs >= fmin) & (self.freqs <= fmax)
 
         # Average PSD across the selected frequency bins
@@ -191,8 +194,8 @@ class EEGProcessor:
         """Apply sliding window to the data.
 
         Args:
-            window_size (int): Size of the sliding window.
-            step_size (int): Step size for the sliding window.
+            window_size (float): Size of the sliding window.
+            step_size (float): Step size for the sliding window.
 
         Returns:
             np.ndarray: Data after applying sliding window.
