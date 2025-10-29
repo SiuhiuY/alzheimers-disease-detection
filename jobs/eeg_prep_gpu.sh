@@ -1,13 +1,22 @@
 #!/bin/bash
-#SBATCH -p GPU
+#SBATCH -p GPU           
 #SBATCH -N 1
-#SBATCH -t 0-36:00
+#SBATCH -t 0-01:00
 #SBATCH --gres=gpu:1
-#SBATCH -o ../results/%x.%j.out
-#SBATCH -e ../results/%x.%j.err
+#SBATCH -o /home/u961155/thesis_codes/jobs/%x.%j.out
+#SBATCH -e /home/u961155/thesis_codes/jobs/%x.%j.err
 
-source ~/.bashrc
+
+# Load Conda
+source /usr/local/anaconda3/etc/profile.d/conda.sh
 conda activate thesis
 
-cd $HOME/thesis_codes/src
+# Move to correct directory
+cd /home/u961155/thesis_codes/src
+
+# Debug: print location info
+echo "Running on host: $(hostname)"
+echo "Current directory: $(pwd)"
+
+# Run Python
 python eeg_processor.py
