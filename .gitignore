@@ -119,5 +119,6 @@ data/
 Tutorials/
 *.fif
 *.set
-jobs/slurm.*.out
-jobs/slurm.*.err
+jobs/*.out
+jobs/*.err
+
