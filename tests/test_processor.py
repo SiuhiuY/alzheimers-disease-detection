@@ -5,7 +5,7 @@ import numpy as np
 from src.eeg_processor import EEGProcessor
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def processor():
     """Fixture to create an EEGProcessor instance for testing."""
     ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -143,15 +143,3 @@ def test_sliding_windows(processor):
     assert processor.windows.ndim == 4
     assert processor.windows.shape[1] == 3
     assert processor.windows.shape[2:] == (32, 32)
-
-
-if __name__ == "__main__":
-    test_load_data(processor())
-    test_epoch_data(processor())
-    test_compute_psd(processor())
-    test_compute_band_psd(processor())
-    test_map_channel_locations(processor())
-    test_map_channel_locations_invalid(processor())
-    test_interpolate(processor())
-    test_sliding_windows(processor())
-    print("All tests passed.")
