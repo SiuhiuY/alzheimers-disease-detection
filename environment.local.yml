@@ -1,15 +1,20 @@
 name: thesis
 channels:
   - defaults
+  - https://repo.anaconda.com/pkgs/main
+  - https://repo.anaconda.com/pkgs/r
+  - https://repo.anaconda.com/pkgs/msys2
 dependencies:
+  - keras
+  - numpy
+  - pandas
+  - opencv
+  - jupyterlab
+  - wandb
+  - pytest
+  - optuna
+  - scipy
+  - seaborn
   - python=3
-  - conda-forge::numpy
-  - conda-forge::opencv
-  - conda-forge::scipy
-  - conda-forge::keras
-  - conda-forge::wandb
-  - conda-forge::optuna
-  - conda-forge::pandas
-  - conda-forge::pytest
-  - conda-forge::seaborn
-  - conda-forge::jupyterlab
+  - scikit-learn=1.7.2
+prefix: C:\Users\xiaox\anaconda3\envs\thesis
