@@ -14,7 +14,9 @@ def load_features(label_path, label_map, band="alpha"):
 
     Returns:
         tuple: (X_all, y_all, subjects_all)
-            where X_all is a numpy array of shape (n_total_windows, window_size, height, width) [e.g., (n, 3, 32, 32)],
+            where X_all is a numpy array of shape
+            (n_total_windows, window_size, height, width)
+            [e.g., (n, 3, 32, 32)],
             y_all is a numpy array of shape (n_total_windows,),
             and subjects_all is a numpy array of shape (n_total_windows,).
     """
@@ -66,9 +68,9 @@ def load_features(label_path, label_map, band="alpha"):
             all_subjects.extend(subj_ids)
 
     # Convert lists to numpy arrays
-    X_all = np.array(all_features)
-    y_all = np.array(all_labels)
-    subjects_all = np.array(all_subjects)
+    X_all = np.array(all_features, dtype=np.float32)
+    y_all = np.array(all_labels, dtype=np.int64)
+    subjects_all = np.array(all_subjects, dtype=object)
 
     return X_all, y_all, subjects_all
 
@@ -76,7 +78,9 @@ def load_features(label_path, label_map, band="alpha"):
 if __name__ == "__main__":
     label_path = "data/participants.tsv"
     label_map = {"A": 0, "F": 1, "C": 2}
-    features, labels, subjects = load_features(label_path, label_map, band="alpha")
+    features, labels, subjects = load_features(
+        label_path, label_map, band="alpha"
+    )
     print("Features shape:", features.shape)
     print("Labels shape:", labels.shape)
     print("Subjects shape:", subjects.shape)
