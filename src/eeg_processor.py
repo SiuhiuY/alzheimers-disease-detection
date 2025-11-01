@@ -104,9 +104,6 @@ class EEGProcessor:
 
         Returns:
             np.ndarray: PSD values in the specified frequency band.
-
-        Raises:
-            ValueError: If an invalid band name is provided.
         """
 
         # Get frequency band mask
