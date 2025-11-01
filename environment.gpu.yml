@@ -78,6 +78,7 @@ dependencies:
   - jasper=4.2.8=he3c4edf_0
   - jedi=0.19.2=py310h06a4308_0
   - jinja2=3.1.6=py310h06a4308_0
+  - joblib=1.5.2=py310h06a4308_0
   - json5=0.9.25=py310h06a4308_0
   - jsonschema=4.25.0=py310h06a4308_0
   - jsonschema-specifications=2023.7.1=py310h06a4308_0
@@ -194,7 +195,6 @@ dependencies:
   - matplotlib-inline=0.1.7=py310h06a4308_0
   - mdurl=0.1.2=py310h06a4308_0
   - mistune=3.1.2=py310h06a4308_0
-  - ml_dtypes=0.5.1=py310hc74f9fe_0
   - mpg123=1.32.9=hc50e24c_0
   - namex=0.1.0=py310h06a4308_0
   - nbclient=0.10.2=py310h06a4308_0
@@ -254,6 +254,7 @@ dependencies:
   - rfc3339-validator=0.1.4=py310h06a4308_0
   - rfc3986-validator=0.1.1=py310h06a4308_0
   - rpds-py=0.22.3=py310h4aa5aa6_0
+  - scikit-learn=1.7.2=py310h228f341_0
   - sdl2=2.32.56=h54a6638_0
   - sdl3=3.2.22=h68140b3_0
   - seaborn=0.13.2=hd8ed1ab_3
@@ -276,6 +277,7 @@ dependencies:
   - svt-av1=3.1.2=hecca717_0
   - tbb=2022.0.0=hdb19cb5_0
   - terminado=0.18.1=py310h06a4308_0
+  - threadpoolctl=3.5.0=py310h2f386ee_0
   - tinycss2=1.4.0=py310h06a4308_0
   - tk=8.6.15=h54e0aa7_0
   - tomli=2.2.1=py310h06a4308_0
@@ -366,3 +368,4 @@ dependencies:
       - termcolor==3.1.0
       - werkzeug==3.1.3
       - wrapt==1.17.3
+prefix: /home/u961155/.conda/envs/thesis
