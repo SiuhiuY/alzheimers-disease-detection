@@ -63,7 +63,7 @@ class CrossValidator:
         for i, (train_idx, test_idx) in enumerate(
             self.splitter.split(
                 self.features, self.labels, self.subjects)):
-            yield i, train_idx, test_idx
+            yield i, train_idx, test_idx  # yield one fold at a time
 
     def outer_loop(self):
         """Generate train-test subsets at each fold for model evaluation."""
