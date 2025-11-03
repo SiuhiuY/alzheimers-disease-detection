@@ -72,4 +72,4 @@ class CrossValidator:
                 self.features, self.labels, self.subjects)):
             train_set = Subset(self.data, train_idx)
             test_set = Subset(self.data, test_idx)
-            yield train_set, test_set
+            yield i, train_set, test_set
