@@ -1,7 +1,7 @@
-from sklearn.model_selection import StratifiedGroupKFold
-from sklearn.model_selection import LeaveOneGroupOut
+from sklearn.model_selection import StratifiedGroupKFold, LeaveOneGroupOut
 from torch.utils.data import Subset
 import random
+import numpy as np
 
 
 class CrossValidator:
@@ -63,6 +63,11 @@ class CrossValidator:
         for i, (train_idx, test_idx) in enumerate(
             self.splitter.split(
                 self.features, self.labels, self.subjects)):
+            if len(set(np.unique(self.subjects[train_idx])) &
+                   set(np.unique(self.subjects[test_idx]))) != 0:
+                raise ValueError(
+                    f"Subjects overlap between train and test sets in inner fold {i}."
+                )
             yield i, train_idx, test_idx  # yield one fold at a time
 
     def outer_loop(self):
@@ -70,6 +75,11 @@ class CrossValidator:
         for i, (train_idx, test_idx) in enumerate(
             self.splitter.split(
                 self.features, self.labels, self.subjects)):
+            if len(set(np.unique(self.subjects[train_idx])) &
+                   set(np.unique(self.subjects[test_idx]))) != 0:
+                raise ValueError(
+                    f"Subjects overlap between train and test sets in outer fold {i}."
+                )
             train_set = Subset(self.data, train_idx)
             test_set = Subset(self.data, test_idx)
             yield i, train_set, test_set
