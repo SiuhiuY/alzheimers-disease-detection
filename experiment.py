@@ -13,6 +13,7 @@ from src.dataset import EEGDataset
 from src.models.CNN import CNNModel
 from cross_validation import CrossValidator
 from src.util import reproducability
+from src.model_trainer import ModelTrainer
 
 # Reference:
 # https://stackoverflow.com/questions/56872664/complex-dataset-split-stratifiedgroupshufflesplit
@@ -73,6 +74,18 @@ def quick_run(model_name, test_size=0.2, seed=123):
 
     # Initialise model
     model = model_name.to(DEVICE)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    trainer = ModelTrainer(
+        model, train_loader, test_loader, optimizer, criterion, DEVICE
+    )
+
+    # Training loop
+    trainer.fit(NUM_EPOCHS)
+    # for epoch in range(NUM_EPOCHS):
+    #     print(f"Epoch {epoch + 1} of {NUM_EPOCHS}")
+    #     trainer.train_one_epoch()
+    #     trainer.evaluate_one_epoch()
 
 
 if __name__ == "__main__":
