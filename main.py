@@ -1,13 +1,5 @@
-import os
-import mne
-import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import wandb
 from torch.utils.data import DataLoader
-from sklearn.model_selection import LeaveOneGroupOut, StratifiedKFold
-from sklearn.metrics import accuracy_score
 from src.feature_loader import load_features
 from src.dataset import EEGDataset
 from src.models.CNN import CNNModel
@@ -72,7 +64,7 @@ def run_model(
             test_subset, batch_size=BATCH_SIZE, shuffle=False
         )
 
-        # Inner loop to split training data into training and validation subsets
+        # Inner loop to split training data into training and validation sets
 
         # Retrieve indices from the training set for inner CV
         train_indices = train_subset.indices
