@@ -1,18 +1,13 @@
-import os
-import mne
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import wandb
+import src.util as util
 from torch.utils.data import DataLoader
 from sklearn.model_selection import StratifiedGroupKFold
-from sklearn.metrics import accuracy_score
 from src.feature_loader import load_features
 from src.dataset import EEGDataset
 from src.models.CNN import CNNModel
-from cross_validation import CrossValidator
-from src.util import reproducability
 from src.model_trainer import ModelTrainer
 
 # Reference:
@@ -29,25 +24,22 @@ BAND = "alpha"
 # Define training configuration
 BATCH_SIZE = 64
 NUM_EPOCHS = 50
-LEARNING_RATE = 0.001
+LEARNING_RATE = 1e-4
 
 
 def quick_run(model_name, test_size=0.2, seed=123):
     """Run the model training and evaluation pipeline."""
 
     # Set random seeds
-    reproducability(seed)
+    util.reproducability(seed)
 
     # Load data
     features, labels, subjects = load_features(
         LABEL_PATH, LABEL_MAP, band=BAND
     )
 
-    # Create dataset
-    full_dataset = EEGDataset(features, labels, subjects)
-
-    # Create a single train/test split stratified by class and grouped by
-    # subject.
+    # Create a single train/test split stratified by class
+    # and grouped by subject.
     single_split = StratifiedGroupKFold(
         n_splits=int(1/test_size), shuffle=True, random_state=seed)
 
@@ -61,8 +53,17 @@ def quick_run(model_name, test_size=0.2, seed=123):
     ) != 0:
         raise ValueError("Subjects overlap between train and test sets!")
 
-    train_subset = torch.utils.data.Subset(full_dataset, train_ind)
-    test_subset = torch.utils.data.Subset(full_dataset, test_ind)
+    # Min-Max normalisation
+    train_features, test_features = util.min_max_normalise(
+        features, train_ind, test_ind
+    )
+
+    train_subset = EEGDataset(
+        train_features, labels[train_ind], subjects[train_ind]
+    )
+    test_subset = EEGDataset(
+        test_features, labels[test_ind], subjects[test_ind]
+    )
 
     # Create DataLoaders for training and testing
     train_loader = DataLoader(
@@ -90,7 +91,7 @@ def quick_run(model_name, test_size=0.2, seed=123):
 
 if __name__ == "__main__":
     quick_run(
-        CNNModel(3, 3),
+        CNNModel(4, 3),
         test_size=0.2,
         seed=123
     )
