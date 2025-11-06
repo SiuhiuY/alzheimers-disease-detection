@@ -1,9 +1,6 @@
 
 from torchmetrics import Accuracy
-from sklearn.metrics import accuracy_score
 import torch
-import torch.nn as nn
-import torch.optim as optim
 
 
 class ModelTrainer:
@@ -16,7 +13,7 @@ class ModelTrainer:
         self.device = device
         self.criterion = criterion
         self.optimizer = optimizer
-        self.accuracy = Accuracy(task="multiclass", num_classes=3)
+        self.accuracy = Accuracy(task="multiclass", num_classes=3).to(device)
 
     def train_one_epoch(self):
         # Set model to training mode
@@ -50,8 +47,10 @@ class ModelTrainer:
         epoch_loss = running_loss / len(self.train_loader)
         accuracy = acc.compute()
         acc.reset()
-        print(f"Training Loss: {epoch_loss:.4f}")
-        print(f"Training Accuracy: {accuracy:.4f}")
+        print(
+            f"Training Loss: {epoch_loss:.4f}, "
+            f"Training Accuracy: {accuracy:.4f}"
+        )
 
     def evaluate_one_epoch(self):
         # Set model to evaluation mode
@@ -74,8 +73,10 @@ class ModelTrainer:
         epoch_loss = running_loss / len(self.test_loader)
         accuracy = acc.compute()
         acc.reset()
-        print(f"Validation Loss: {epoch_loss:.4f}")
-        print(f"Validation Accuracy: {accuracy:.4f}")
+        print(
+            f"Validation Loss: {epoch_loss:.4f}, "
+            f"Validation Accuracy: {accuracy:.4f}"
+        )
 
     def fit(self, num_epochs):
         for epoch in range(num_epochs):
