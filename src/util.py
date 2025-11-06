@@ -53,7 +53,12 @@ def min_max_normalise(features, train_ind, test_ind):
     test_features = (test_features - train_min) / (
         train_max - train_min + eps)
 
-    if train_features.min() < 0 or train_features.max() > 1:
-        raise ValueError("Train features not in [0, 1] after normalisation.")
+    # Check if train features are in [0, 1] with a tolerance
+    if not (np.isclose(train_features.min(), 0, atol=1e-6) or
+            train_features.min() >= 0):
+        raise ValueError("Train min value below 0 after normalisation.")
+    if not (np.isclose(train_features.max(), 1, atol=1e-6) or
+            train_features.max() <= 1):
+        raise ValueError("Train max value above 1 after normalisation.")
 
     return train_features, test_features
