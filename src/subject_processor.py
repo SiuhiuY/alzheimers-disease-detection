@@ -64,7 +64,7 @@ class SubjectProcessor:
         Raises:
             ValueError: If the band name is invalid.
         """
-        if band_name not in EEGProcessor.VALID_BANDS:
+        if band_name.lower() not in EEGProcessor.VALID_BANDS:
             valid_bands = list(EEGProcessor.VALID_BANDS.keys())
             raise ValueError(
                 f"Invalid band name. Choose from {valid_bands}."
@@ -72,7 +72,7 @@ class SubjectProcessor:
 
         self.band_name = band_name
 
-    def choose_window_size(self, window_size=3, step_size=1):
+    def choose_window_size(self, window_size=4, step_size=1):
         """Choose sliding window parameters.
 
         Args:
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     processor = SubjectProcessor()
     processor.find_all_subjects()
     print("Found subjects:", len(processor.subject_dirs))
-    processor.choose_band()
+    processor.choose_band(band_name="alpha")
     print("Chosen band:", processor.band_name)
     processor.choose_window_size(window_size=4)
     print("Window size set to:", processor.window_size)

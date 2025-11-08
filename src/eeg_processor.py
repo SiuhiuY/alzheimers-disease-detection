@@ -187,7 +187,7 @@ class EEGProcessor:
         # output shape: (n_epochs, 32, 32)
         return self.interpolated_data
 
-    def sliding_window(self, window_size=3, step_size=1):
+    def sliding_window(self, window_size=4, step_size=1):
         """Apply sliding window to the data.
 
         Args:
@@ -221,6 +221,6 @@ if __name__ == "__main__":
     processor.compute_band_psd()
     processor.map_channel_locations()
     processor.interpolate()
-    sliding_windows = processor.sliding_window()
+    sliding_windows = processor.sliding_window(window_size=4)
     print(processor)
     print("Sliding windows shape:", sliding_windows.shape)
