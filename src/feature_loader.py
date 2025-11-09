@@ -3,11 +3,10 @@ import numpy as np
 import pandas as pd
 
 
-def load_features(label_path, label_map, band="alpha"):
+def load_features(label_map, band="alpha"):
     """Load image-like features and synchronise with class labels.
 
     Args:
-        label_path (str): Path to the .tsv file containing subject labels.
         label_map (dict): Mapping of class names to integer labels.
         band (str): EEG frequency band to load features from.
 
@@ -24,6 +23,7 @@ def load_features(label_path, label_map, band="alpha"):
     DATA_DIR = os.path.join(ROOT_DIR, "..", "data")
     feature_dir = os.path.join(DATA_DIR, "features")
     data_dir = os.path.join(feature_dir, band)
+    label_path = os.path.join(DATA_DIR, "participants.tsv")
 
     if not os.path.exists(data_dir):
         raise FileNotFoundError(f"Feature directory {data_dir} not found.")
@@ -80,12 +80,11 @@ def load_features(label_path, label_map, band="alpha"):
 
 
 if __name__ == "__main__":
-    label_path = "data/participants.tsv"
     AD_FTD_CN = {"A": 0, "F": 1, "C": 2}
     AD_CN = {"A": 0, "C": 1}
     FTD_CN = {"F": 0, "C": 1}
     features, labels, subjects = load_features(
-        label_path, label_map=FTD_CN, band="alpha"
+        label_map=FTD_CN, band="alpha"
     )
     print("Features shape:", features.shape)
     print("Labels shape:", labels.shape)
