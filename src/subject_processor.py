@@ -18,11 +18,11 @@ class SubjectProcessor:
         subject_dirs (list): List of subject directory paths.
         band_name (str): Frequency band of interest."""
 
-    def __init__(self):
+    def __init__(self, data_dir):
         """Initialize the SubjectProcessor.
         """
         self.ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-        self.DATA_DIR = os.path.join(self.ROOT_DIR, "..", "data")
+        self.DATA_DIR = data_dir
         self.PROCESSED_DIR = os.path.join(self.DATA_DIR, "derivatives")
         self.FEATURES_DIR = os.path.join(self.DATA_DIR, "features")
 
@@ -154,7 +154,10 @@ class SubjectProcessor:
 
 
 if __name__ == "__main__":
-    processor = SubjectProcessor()
+    data_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "data"
+    )
+    processor = SubjectProcessor(data_dir)
     processor.find_all_subjects()
     print("Found subjects:", len(processor.subject_dirs))
     processor.choose_band(band_name="alpha")
