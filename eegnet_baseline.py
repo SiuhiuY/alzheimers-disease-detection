@@ -22,7 +22,7 @@ def reproducibility(seed):
     Args:
         seed (int): The seed value to set.
     """
-    os.environ['PYTHONHASHSEED']=str(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
 
     keras.utils.set_random_seed(seed)
     tf.config.experimental.enable_op_determinism()
@@ -80,8 +80,9 @@ def load_eeg_data(label_map):
         subj_id = os.path.basename(subj_dir)
 
         if subj_id in label_to_int:
-            subj_path = os.path.join(subj_dir, "eeg",
+            subj_path = os.path.join(PROCESSED_DIR, subj_dir, "eeg",
                                      f"{subj_id}_task-eyesclosed_eeg.set")
+
             if not os.path.exists(subj_path):
                 raise FileNotFoundError(
                     f"EEG file for subject {subj_id} not found at {subj_path}."
@@ -97,7 +98,7 @@ def load_eeg_data(label_map):
 
             # Extract epoched data as NumPy array
             # Shape: (n_epochs, n_channels, n_times per epoch)
-            subj_feature = signals.get_data()
+            subj_feature = signals.get_data() * 1000 
 
             # Get the number of epochs and class label for the subject
             n_epochs = subj_feature.shape[0]
@@ -146,6 +147,25 @@ print(np.unique(subjects_all))
 #     num_classes = 3
 
 # y_all = to_categorical(y_all, num_classes=num_classes)
+
+
+# configure the EEGNet-8,2,16 model with kernel length of 32 samples (other 
+# model configurations may do better, but this is a good starting point)
+model = EEGNet(nb_classes = 4, Chans = chans, Samples = samples, 
+               dropoutRate = 0.5, kernLength = 32, F1 = 8, D = 2, F2 = 16, 
+               dropoutType = 'Dropout')
+
+# compile the model and set the optimizers
+model.compile(loss='categorical_crossentropy', optimizer='adam', 
+              metrics = ['accuracy'])
+
+# count number of parameters in the model
+numParams    = model.count_params()    
+
+# set a valid path for your system to record model checkpoints
+checkpointer = ModelCheckpoint(filepath='/tmp/checkpoint.h5', verbose=1,
+                               save_best_only=True)
+
 
 # print(f"Total samples: {X_all.shape[0]}")
 # print(f"Feature shape: {X_all.shape[1:]}")  # (n_channels, n_times)
