@@ -2,7 +2,10 @@ import os
 import mne
 import numpy as np
 import pandas as pd
+import random
 import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow import keras
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import LeaveOneGroupOut
@@ -11,11 +14,18 @@ from sklearn.metrics import (confusion_matrix, accuracy_score,
 from src.models.EEGNet import EEGNet
 from src.eeg_processor import EEGProcessor
 from src.subject_processor import SubjectProcessor
-# import src.util as util
 
 
-# Set random seed for reproducibility
-# util.reproducibility(123)
+def reproducibility(seed):
+    """Set seeds for reproducibility across different libraries.
+
+    Args:
+        seed (int): The seed value to set.
+    """
+    os.environ['PYTHONHASHSEED']=str(seed)
+
+    keras.utils.set_random_seed(seed)
+    tf.config.experimental.enable_op_determinism()
 
 
 def load_eeg_data(label_map):
@@ -110,14 +120,15 @@ def load_eeg_data(label_map):
     return X_all, y_all, subjects_all
 
 
+# Set seed for reproducibility
+reproducibility(123)
+
 # Define label path and label map
 AD_FTD_CN = {"A": 0, "F": 1, "C": 2}
 AD_CN = {"A": 0, "C": 1}
 FTD_CN = {"F": 0, "C": 1}
 
-X_all, y_all, subjects_all = load_eeg_data(
-    FTD_CN
-)
+X_all, y_all, subjects_all = load_eeg_data(FTD_CN)
 
 print(X_all.shape, y_all.shape, subjects_all.shape)
 print(np.unique(y_all))
