@@ -21,7 +21,6 @@ class SubjectProcessor:
     def __init__(self, data_dir):
         """Initialize the SubjectProcessor.
         """
-        self.ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
         self.DATA_DIR = data_dir
         self.PROCESSED_DIR = os.path.join(self.DATA_DIR, "derivatives")
         self.FEATURES_DIR = os.path.join(self.DATA_DIR, "features")
@@ -154,9 +153,8 @@ class SubjectProcessor:
 
 
 if __name__ == "__main__":
-    data_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "..", "data"
-    )
+    ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(ROOT_DIR, "..", "data")
     processor = SubjectProcessor(data_dir)
     processor.find_all_subjects()
     print("Found subjects:", len(processor.subject_dirs))
