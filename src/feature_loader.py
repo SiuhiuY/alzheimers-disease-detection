@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import pandas as pd
-from .subject_processor import SubjectProcessor
 
 
 def load_features(label_path, label_map, band="alpha"):
@@ -21,7 +20,9 @@ def load_features(label_path, label_map, band="alpha"):
             and subjects_all is a numpy array of shape (n_total_windows,).
     """
     # Define data directory based on band
-    feature_dir = SubjectProcessor().FEATURES_DIR
+    ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+    DATA_DIR = os.path.join(ROOT_DIR, "..", "data")
+    feature_dir = os.path.join(DATA_DIR, "features")
     data_dir = os.path.join(feature_dir, band)
 
     if not os.path.exists(data_dir):
@@ -31,10 +32,13 @@ def load_features(label_path, label_map, band="alpha"):
     label_df = pd.read_csv(label_path, sep="\t")
     label_dict = label_df.set_index("participant_id")['Group'].to_dict()
 
+    # Get valid groups from label_map
+    valid_groups = set(label_map.keys())
+
     # Map class names to integer labels
     label_to_int = {
         subj_id: label_map[group]
-        for subj_id, group in label_dict.items()
+        for subj_id, group in label_dict.items() if group in valid_groups
     }
 
     # Initialise lists to hold data
@@ -63,12 +67,12 @@ def load_features(label_path, label_map, band="alpha"):
             subj_ids = [subject_id] * num_windows
 
             # Append the subject data to the overall lists
-            all_features.extend(subj_features)
+            all_features.append(subj_features)
             all_labels.extend(subj_labels)
             all_subjects.extend(subj_ids)
 
     # Convert lists to numpy arrays
-    X_all = np.array(all_features, dtype=np.float32)
+    X_all = np.concatenate(all_features, axis=0).astype(np.float32)
     y_all = np.array(all_labels, dtype=np.int64)
     subjects_all = np.array(all_subjects, dtype=object)
 
@@ -77,9 +81,11 @@ def load_features(label_path, label_map, band="alpha"):
 
 if __name__ == "__main__":
     label_path = "data/participants.tsv"
-    label_map = {"A": 0, "F": 1, "C": 2}
+    AD_FTD_CN = {"A": 0, "F": 1, "C": 2}
+    AD_CN = {"A": 0, "C": 1}
+    FTD_CN = {"F": 0, "C": 1}
     features, labels, subjects = load_features(
-        label_path, label_map, band="alpha"
+        label_path, label_map=FTD_CN, band="alpha"
     )
     print("Features shape:", features.shape)
     print("Labels shape:", labels.shape)
