@@ -1,59 +1,147 @@
-# Thesis
+# Master Thesis - Data Science & Society 
+
+## Project Title
+Alzheimer's Disease Detection Using EEG Topographic Images
 
 
 
-## Getting started
+---
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## Project Overview
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
 
-## Add your files
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+
+
+## Repository Structure
+```
+THESIS_CODES/
+│
+├── data/
+│   ├── derivatives/
+│   ├── features/
+│   ├── raw/
+│   ├── dataset_description.json
+│   ├── participants.json
+│   ├── participants.tsv
+│   └── CHANGES
+│
+├── jobs/
+│   └── eeg_prep_gpu.sh
+│
+├── notebooks/
+│   ├── Tutorials/
+│   ├── eda.ipynb
+│   ├── experiment.ipynb
+│   ├── image.ipynb
+│   └── saved_epo.fif
+│
+├── src/
+│   ├── models/
+│   │   ├── AlexNet.py
+│   │   ├── CNN.py
+│   │   ├── EEGNet.py
+│   │   ├── ResNet.py
+│   │   └── VGG.py
+│   │
+│   ├── dataset.py
+│   ├── eeg_processor.py
+│   ├── feature_loader.py
+│   ├── model_trainer.py
+│   ├── model_tuner.py
+│   ├── subject_processor.py
+│   ├── util.py
+│   └── __init__.py
+│
+├── tests/
+│   ├── test_subject.py
+│   └── __init__.py
+│
+├── cross_validation.py
+├── experiment.py
+├── main.py
+├── environment.gpu.yml
+├── environment.local.yml
+├── .gitignore
+├── .gitlab-ci.yml
+├── README.md
+└── requirements.txt
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.uvt.nl/u961155/thesis.git
-git branch -M main
-git push -uf origin main
+
+## Dataset
+
+
+## Usage
+
+### Dataset Download 
+Download the dataset at http:// 
+
+By choosing your root directory, the dataset will automatically be saved in a "data" folder.
+
+### Image Extraction 
+To extract images from the EEG signals: amend the configurations, including band name and the window size, in subject_processor.py and run the command
+```
+python -m src.subject_processor
+```
+The images will be saved in a folder which corresponds to the band name of your choice. 
+
+By implementing the above two steps, your data repository will be arranged as below: 
+
+```
+├── data/
+│   ├── derivatives/
+│   │   ├── sub-001/
+│   │   │   └── eeg/
+│   │   │       └── sub-001_task-eyesclosed_eeg.set
+│   │   ├── sub-002/
+│   │   ├── sub-003/
+│   │   ├── ...
+│   │   ├── sub-086/
+│   │   ├── sub-087/
+│   │   └── sub-088/
+│   │
+│   ├── features/
+│   │   ├── alpha/
+│   │   └── delta/
+│   │
+│   ├── raw/
+│   │   ├── sub-001/
+│   │   │   └── eeg/
+│   │   │       ├── sub-001_task-eyesclosed_channels.tsv
+│   │   │       ├── sub-001_task-eyesclosed_eeg.json
+│   │   │       └── sub-001_task-eyesclosed_eeg.set
+│   │   ├── sub-002/
+│   │   ├── sub-003/
+│   │   ├── ...
+│   │   ├── sub-086/
+│   │   ├── sub-087/
+│   │   └── sub-088/
+│   │
+│   ├── dataset_description.json
+│   ├── participants.json
+│   ├── participants.tsv
+│   └── CHANGES
 ```
 
-## Integrate with your tools
+To test for image extraction steps in eeg_processor.py and subject_processor.py
+```
+pytest -v
+```
 
-- [ ] [Set up project integrations](https://gitlab.uvt.nl/u961155/thesis/-/settings/integrations)
+### Run Experiment
 
-## Collaborate with your team
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
+## Requirements
+```bash
+python==3.10
+torch==2.1.0
+torchmetrics==1.2.0
+numpy==1.26.4
+mne==1.7.0
+scikit-learn==1.3.0
+matplotlib==3.8.0
+```
 
 ## Description
 Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
