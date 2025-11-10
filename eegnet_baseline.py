@@ -6,8 +6,9 @@ import random
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.utils import to_categorical
+from tensorflow.keras import backend as K
 from sklearn.model_selection import LeaveOneGroupOut, StratifiedGroupKFold
 from sklearn.metrics import (confusion_matrix, accuracy_score,
                              precision_score, recall_score, f1_score)
@@ -149,11 +150,11 @@ if __name__ == "__main__":
     # Set seed for reproducibility
     reproducibility(RANDOM_SEED)
 
-    # Define label path and label map
+    # Define label map
     AD_FTD_CN = {"A": 0, "F": 1, "C": 2}
-    AD_CN = {"A": 0, "C": 1}
-    FTD_CN = {"F": 0, "C": 1}
-    AD_FTD = {"A": 0, "F": 1}
+    AD_CN = {"A": 1, "C": 0}
+    FTD_CN = {"F": 1, "C": 0}
+    AD_FTD = {"A": 1, "F": 0}
     label_map = FTD_CN
 
     # Load EEG data
@@ -166,96 +167,134 @@ if __name__ == "__main__":
     chans = X_all.shape[1]  # Number of EEG channels
     kernels = 1  # Single kernel/channel
 
-    # Initialise Leave-One-Subject-Out cross-validator
-    logo = LeaveOneGroupOut()
+    # Initialise cross validation
+    outer_loop = LeaveOneGroupOut()
+    inner_loop = StratifiedGroupKFold(
+        n_splits=10, shuffle=True, random_state=RANDOM_SEED
+    )
     min_epochs = 0
     all_metrics = []
 
-    for fold, (train_val_ind, test_ind) in enumerate(
-        logo.split(X_all, y_all, groups=subjects_all)
+    # Outer Leave-One-Subject-Out cross-validation for model evaluation
+    for outer_fold, (train_val_idx, test_idx) in enumerate(
+        outer_loop.split(X_all, y_all, groups=subjects_all)
     ):
-        print(f"Fold {fold + 1}:")
+        total_outer = outer_loop.get_n_splits()
+        print(f"Training outer fold {outer_fold + 1} of {total_outer} folds:")
 
         if len(
-            set(np.unique(subjects_all[train_val_ind])) &
-            set(np.unique(subjects_all[test_ind]))
+            set(np.unique(subjects_all[train_val_idx])) &
+            set(np.unique(subjects_all[test_idx]))
         ) != 0:
             raise ValueError("Subjects overlap between train and test sets!")
 
-        X_train_val, X_test = X_all[train_val_ind], X_all[test_ind]
-        y_train_val, y_test = y_all[train_val_ind], y_all[test_ind]
-        subjects_train_val, subjects_test = (
-            subjects_all[train_val_ind], subjects_all[test_ind]
+        # Split data into training and testing sets for this fold
+        X_train_val, y_train_val, subjects_train_val = (
+            X_all[train_val_idx],
+            y_all[train_val_idx],
+            subjects_all[train_val_idx]
+        )
+        X_test, y_test, subjects_test = (
+            X_all[test_idx],
+            y_all[test_idx],
+            subjects_all[test_idx]
         )
 
-        # Inner train validation split grouped by subjects
-        # and stratified by class
-        test_size = 0.2
-        inner_split = StratifiedGroupKFold(
-            n_splits=int(1/test_size), shuffle=True, random_state=RANDOM_SEED
-        )
-
-        train_ind, val_ind = next(inner_split.split(
-            X_train_val, y_train_val, groups=subjects_train_val
-            ))
-
-        if len(
-            set(np.unique(subjects_all[train_val_ind][train_ind])) &
-            set(np.unique(subjects_all[train_val_ind][val_ind]))
-        ) != 0:
-            raise ValueError(
-                "Subjects overlap between inner train and val sets!"
+        # Inner Kfold cross validation for hyperparameter tuning
+        for inner_fold, (train_ind, val_ind) in enumerate(
+            inner_loop.split(
+                X_train_val, y_train_val, groups=subjects_train_val)
+        ):
+            print(
+                f"Training inner fold {inner_fold + 1} of "
+                f"{inner_loop.get_n_splits()} folds:"
             )
 
-        X_train, X_val = X_train_val[train_ind], X_train_val[val_ind]
-        y_train, y_val = y_train_val[train_ind], y_train_val[val_ind]
-        subjects_train, subjects_val = (
-            subjects_train_val[train_ind], subjects_train_val[val_ind]
-        )
+            if len(
+                set(np.unique(subjects_train_val[train_ind])) &
+                set(np.unique(subjects_train_val[val_ind]))
+            ) != 0:
+                raise ValueError(
+                    "Subjects overlap between inner train and val sets!"
+                )
 
-        # Reshape features for EEGNet input
-        # EEGNet expects input shape: (n_epochs, n_channels, n_times, 1)
-        X_train = X_train.reshape(X_train.shape[0], chans, samples, kernels)
-        X_val = X_val.reshape(X_val.shape[0], chans, samples, kernels)
-        X_test = X_test.reshape(X_test.shape[0], chans, samples, kernels)
+            # Split data into training and validation sets for this fold
+            X_train, y_train, subjects_train = (
+                X_train_val[train_ind],
+                y_train_val[train_ind],
+                subjects_train_val[train_ind]
+            )
+            X_val, y_val, subjects_val = (
+                X_train_val[val_ind],
+                y_train_val[val_ind],
+                subjects_train_val[val_ind]
+            )
 
-        # Convert labels to one-hot encoding
-        num_classes = len(label_map)
-        # y_train = to_categorical(y_train, num_classes=num_classes)
-        # y_val = to_categorical(y_val, num_classes=num_classes)
-        # y_test = to_categorical(y_test, num_classes=num_classes)
+            # Reshape features for EEGNet input
+            # EEGNet expects input shape: (n_epochs, n_channels, n_times, 1)
+            X_train = X_train.reshape(X_train.shape[0], chans, samples, kernels)
+            X_val = X_val.reshape(X_val.shape[0], chans, samples, kernels)
+            X_test = X_test.reshape(X_test.shape[0], chans, samples, kernels)
 
-        # Configure the EEGNet-8,2,16 model with kernel length of 32 samples
-        model = EEGNet(nb_classes=num_classes, Chans=chans, Samples=samples,
-                       dropoutRate=0.5, kernLength=64, F1=8, D=2, F2=16,
-                       dropoutType='Dropout')
+            # Convert labels to one-hot encoding
+            num_classes = len(label_map)
+            # y_train = to_categorical(y_train, num_classes=num_classes)
+            # y_val = to_categorical(y_val, num_classes=num_classes)
+            # y_test = to_categorical(y_test, num_classes=num_classes)
 
-        # Compile the model and set the optimizers
-        model.compile(loss='binary_crossentropy', optimizer='adam',
-                      metrics=['accuracy'])
+            # Configure the EEGNet-8,2,16 model with kernel length of 32 samples
+            model = EEGNet(nb_classes=num_classes, Chans=chans, Samples=samples,
+                           dropoutRate=0.5, kernLength=64, F1=8, D=2, F2=16,
+                           dropoutType='Dropout')
 
-        # Count number of parameters in the model
-        numParams = model.count_params()
+            # Compile the model and set the optimizers
+            model.compile(loss='binary_crossentropy', optimizer='adam',
+                          metrics=['accuracy'])
 
-        # Model checkpoints and early stopping
-        # checkpointer = ModelCheckpoint(
+            # Count number of parameters in the model
+            numParams = model.count_params()
 
-        # Model training
-        history = model.fit(X_train, y_train, epochs=20,
-                            batch_size=64, validation_data=(X_val, y_val),
-                            verbose=0)
+            # Model checkpoints and early stopping
+            # checkpointer = ModelCheckpoint(
+            callback = EarlyStopping(
+                monitor='val_loss', patience=10, restore_best_weights=True)
+            reduce_lr = ReduceLROnPlateau(
+                monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
 
-        # Evaluate the model on the test set
-        y_pred_prob = model.predict(X_test).ravel()
-        y_pred_labels = (y_pred_prob > 0.5).astype(int)
+            # Model training
+            history = model.fit(X_train, y_train,
+                                validation_data=(X_val, y_val),
+                                epochs=20, batch_size=64, verbose=0,
+                                callbacks=[callback])
 
-        accuracy = accuracy_score(y_test, y_pred_labels)
-        precision = precision_score(y_test, y_pred_labels, average='binary')
-        recall = recall_score(y_test, y_pred_labels, average='binary')
-        f1 = f1_score(y_test, y_pred_labels, average='binary')
-        all_metrics.append((accuracy, precision, recall, f1))
+            # Model weights loading from best epoch
+            # model.load_weights(checkpointer.filepath)
 
-        print(f"Test Accuracy: {accuracy:.4f}")
-        print(f"Test Precision: {precision:.4f}")
-        print(f"Test Recall: {recall:.4f}")
-        print(f"Test F1-score: {f1:.4f}")
+            # Plot training & validation accuracy and loss curves
+
+            # Train on the whole training set
+            model.fit(X_train_val, y_train_val,
+                      epochs=20, batch_size=64, verbose=0,
+                      callbacks=[callback])
+
+            # Evaluate on the test set
+            test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
+
+            # Get predict probabilities and classes
+            y_pred_prob = model.predict(X_test)
+            y_pred_labels = (y_pred_prob > 0.5)
+
+            accuracy = accuracy_score(y_test, y_pred_labels)
+            precision = precision_score(y_test, y_pred_labels, average='binary')
+            recall = recall_score(y_test, y_pred_labels, average='binary')
+            f1 = f1_score(y_test, y_pred_labels, average='binary')
+            cm = confusion_matrix(y_test, y_pred_labels)
+
+            # Clear Keras session to free memory after each fold
+            K.clear_session()
+
+            print(f"Test Accuracy: {accuracy:.4f}")
+            print(f"Test Precision: {precision:.4f}")
+            print(f"Test Recall: {recall:.4f}")
+            print(f"Test F1-score: {f1:.4f}")
+            print(f"Confusion Matrix:\n{cm}\n")
