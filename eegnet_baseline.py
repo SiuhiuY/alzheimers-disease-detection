@@ -221,9 +221,9 @@ if __name__ == "__main__":
 
         # Convert labels to one-hot encoding
         num_classes = len(label_map)
-        y_train = to_categorical(y_train, num_classes=num_classes)
-        y_val = to_categorical(y_val, num_classes=num_classes)
-        y_test = to_categorical(y_test, num_classes=num_classes)
+        # y_train = to_categorical(y_train, num_classes=num_classes)
+        # y_val = to_categorical(y_val, num_classes=num_classes)
+        # y_test = to_categorical(y_test, num_classes=num_classes)
 
         # Configure the EEGNet-8,2,16 model with kernel length of 32 samples
         model = EEGNet(nb_classes=num_classes, Chans=chans, Samples=samples,
@@ -231,7 +231,7 @@ if __name__ == "__main__":
                        dropoutType='Dropout')
 
         # Compile the model and set the optimizers
-        model.compile(loss='categorical_crossentropy', optimizer='adam',
+        model.compile(loss='binary_crossentropy', optimizer='adam',
                       metrics=['accuracy'])
 
         # Count number of parameters in the model
@@ -246,21 +246,16 @@ if __name__ == "__main__":
                             verbose=0)
 
         # Evaluate the model on the test set
-        # model.load_weights('best_model.h5')
-        y_pred = model.predict(X_test)
+        y_pred_prob = model.predict(X_test).ravel()
+        y_pred_labels = (y_pred_prob > 0.5).astype(int)
 
-        # Convert predictions and true labels from one-hot to class labels
-        y_pred_labels = np.argmax(y_pred, axis=1)
-        y_true_labels = np.argmax(y_test, axis=1)
-        accuracy = accuracy_score(y_true_labels, y_pred_labels)
-        precision = precision_score(y_true_labels, y_pred_labels, average='weighted')
-        recall = recall_score(y_true_labels, y_pred_labels, average='weighted')
-        f1 = f1_score(y_true_labels, y_pred_labels, average='weighted')
+        accuracy = accuracy_score(y_test, y_pred_labels)
+        precision = precision_score(y_test, y_pred_labels, average='binary')
+        recall = recall_score(y_test, y_pred_labels, average='binary')
+        f1 = f1_score(y_test, y_pred_labels, average='binary')
         all_metrics.append((accuracy, precision, recall, f1))
 
         print(f"Test Accuracy: {accuracy:.4f}")
         print(f"Test Precision: {precision:.4f}")
         print(f"Test Recall: {recall:.4f}")
         print(f"Test F1-score: {f1:.4f}")
-        
-        
