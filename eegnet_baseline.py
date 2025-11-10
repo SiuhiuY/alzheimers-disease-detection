@@ -19,6 +19,9 @@ from src.subject_processor import SubjectProcessor
 # Set random seed
 RANDOM_SEED = 123
 
+# Set up logging
+
+
 # GPU configuration
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -156,9 +159,11 @@ if __name__ == "__main__":
     FTD_CN = {"F": 1, "C": 0}
     AD_FTD = {"A": 1, "F": 0}
     label_map = FTD_CN
+    num_classes = len(label_map)
 
     # Load EEG data
     X_all, y_all, subjects_all = load_eeg_data(label_map)
+    print("Classifing groups:", list(label_map.keys()))
 
     # Define EEGNet input shape parameters
     sampling_rate = 500  # Hz
@@ -175,11 +180,15 @@ if __name__ == "__main__":
     min_epochs = 0
     all_metrics = []
 
+    # Model checkpoints and early stopping
+    # checkpointer = ModelCheckpoint(
+    callback = EarlyStopping(monitor='loss', patience=10, restore_best_weights=True)
+
     # Outer Leave-One-Subject-Out cross-validation for model evaluation
     for outer_fold, (train_val_idx, test_idx) in enumerate(
         outer_loop.split(X_all, y_all, groups=subjects_all)
     ):
-        total_outer = outer_loop.get_n_splits()
+        total_outer = outer_loop.get_n_splits(groups=subjects_all)
         print(f"Training outer fold {outer_fold + 1} of {total_outer} folds:")
 
         if len(
@@ -234,13 +243,6 @@ if __name__ == "__main__":
             # EEGNet expects input shape: (n_epochs, n_channels, n_times, 1)
             X_train = X_train.reshape(X_train.shape[0], chans, samples, kernels)
             X_val = X_val.reshape(X_val.shape[0], chans, samples, kernels)
-            X_test = X_test.reshape(X_test.shape[0], chans, samples, kernels)
-
-            # Convert labels to one-hot encoding
-            num_classes = len(label_map)
-            # y_train = to_categorical(y_train, num_classes=num_classes)
-            # y_val = to_categorical(y_val, num_classes=num_classes)
-            # y_test = to_categorical(y_test, num_classes=num_classes)
 
             # Configure the EEGNet-8,2,16 model with kernel length of 32 samples
             model = EEGNet(nb_classes=num_classes, Chans=chans, Samples=samples,
@@ -254,47 +256,49 @@ if __name__ == "__main__":
             # Count number of parameters in the model
             numParams = model.count_params()
 
-            # Model checkpoints and early stopping
-            # checkpointer = ModelCheckpoint(
-            callback = EarlyStopping(
-                monitor='val_loss', patience=10, restore_best_weights=True)
-            reduce_lr = ReduceLROnPlateau(
-                monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+            # Inner early stopping
+            inner_callback = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True) 
 
             # Model training
             history = model.fit(X_train, y_train,
                                 validation_data=(X_val, y_val),
                                 epochs=20, batch_size=64, verbose=0,
-                                callbacks=[callback])
+                                callbacks=[inner_callback])
 
             # Model weights loading from best epoch
             # model.load_weights(checkpointer.filepath)
 
-            # Plot training & validation accuracy and loss curves
-
-            # Train on the whole training set
-            model.fit(X_train_val, y_train_val,
-                      epochs=20, batch_size=64, verbose=0,
-                      callbacks=[callback])
-
-            # Evaluate on the test set
-            test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
-
-            # Get predict probabilities and classes
-            y_pred_prob = model.predict(X_test)
-            y_pred_labels = (y_pred_prob > 0.5)
-
-            accuracy = accuracy_score(y_test, y_pred_labels)
-            precision = precision_score(y_test, y_pred_labels, average='binary')
-            recall = recall_score(y_test, y_pred_labels, average='binary')
-            f1 = f1_score(y_test, y_pred_labels, average='binary')
-            cm = confusion_matrix(y_test, y_pred_labels)
-
-            # Clear Keras session to free memory after each fold
+            # Clear Keras session to free memory after each inner fold
             K.clear_session()
 
-            print(f"Test Accuracy: {accuracy:.4f}")
-            print(f"Test Precision: {precision:.4f}")
-            print(f"Test Recall: {recall:.4f}")
-            print(f"Test F1-score: {f1:.4f}")
-            print(f"Confusion Matrix:\n{cm}\n")
+        # Train on the whole training-val set
+        X_train_val = X_train_val.reshape(X_train_val.shape[0], chans, samples, kernels)
+        X_test = X_test.reshape(X_test.shape[0], chans, samples, kernels)
+
+        model.fit(X_train_val, y_train_val,
+                    epochs=20, batch_size=64, verbose=0,
+                    callbacks=[callback])
+
+        # Evaluate on the test set
+        test_subject = subjects_test[0]
+        print(f"Evaluating on test subject: {test_subject}")
+        test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
+
+        # Get predict probabilities and classes
+        y_pred_prob = model.predict(X_test).flatten()
+        y_pred_labels = (y_pred_prob > 0.5).astype(int)
+
+        accuracy = accuracy_score(y_test, y_pred_labels)
+        precision = precision_score(y_test, y_pred_labels, average='binary', zero_division=0)
+        recall = recall_score(y_test, y_pred_labels, average='binary', zero_division=0)
+        f1 = f1_score(y_test, y_pred_labels, average='binary', zero_division=0)
+        cm = confusion_matrix(y_test, y_pred_labels)
+
+        # Clear Keras session to free memory after each outer fold
+        K.clear_session()
+
+        print(f"Test Accuracy: {accuracy:.4f}")
+        print(f"Test Precision: {precision:.4f}")
+        print(f"Test Recall: {recall:.4f}")
+        print(f"Test F1-score: {f1:.4f}")
+        print(f"Confusion Matrix:\n{cm}\n")
