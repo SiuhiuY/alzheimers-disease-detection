@@ -169,6 +169,8 @@ if __name__ == "__main__":
     # Initialise Leave-One-Subject-Out cross-validator
     logo = LeaveOneGroupOut()
     min_epochs = 0
+    all_metrics = []
+
     for fold, (train_val_ind, test_ind) in enumerate(
         logo.split(X_all, y_all, groups=subjects_all)
     ):
@@ -223,51 +225,42 @@ if __name__ == "__main__":
         y_val = to_categorical(y_val, num_classes=num_classes)
         y_test = to_categorical(y_test, num_classes=num_classes)
 
-        print(f"  Training samples: {X_train.shape}")
-        print(f"  Validation samples: {X_val.shape}")
-        print(f"  Testing samples: {X_test.shape}")
-        break 
+        # Configure the EEGNet-8,2,16 model with kernel length of 32 samples
+        model = EEGNet(nb_classes=num_classes, Chans=chans, Samples=samples,
+                       dropoutRate=0.5, kernLength=64, F1=8, D=2, F2=16,
+                       dropoutType='Dropout')
 
+        # Compile the model and set the optimizers
+        model.compile(loss='categorical_crossentropy', optimizer='adam',
+                      metrics=['accuracy'])
 
+        # Count number of parameters in the model
+        numParams = model.count_params()
 
+        # Model checkpoints and early stopping
+        # checkpointer = ModelCheckpoint(
 
-# Reshape features for EEGNet input
-# EEGNet expects input shape: (n_epochs, n_channels, n_times, 1)
-# kernels, chans, samples = 1, 19, 151
-# X_all = X_all.reshape(X_all.shape[0], chans, samples, kernels)
+        # Model training
+        history = model.fit(X_train, y_train, epochs=20,
+                            batch_size=64, validation_data=(X_val, y_val),
+                            verbose=0)
 
-# # Convert labels to one-hot encoding
-# if binary:
-#     num_classes = 2
-# else:
-#     num_classes = 3
+        # Evaluate the model on the test set
+        # model.load_weights('best_model.h5')
+        y_pred = model.predict(X_test)
 
-# y_all = to_categorical(y_all, num_classes=num_classes)
+        # Convert predictions and true labels from one-hot to class labels
+        y_pred_labels = np.argmax(y_pred, axis=1)
+        y_true_labels = np.argmax(y_test, axis=1)
+        accuracy = accuracy_score(y_true_labels, y_pred_labels)
+        precision = precision_score(y_true_labels, y_pred_labels, average='weighted')
+        recall = recall_score(y_true_labels, y_pred_labels, average='weighted')
+        f1 = f1_score(y_true_labels, y_pred_labels, average='weighted')
+        all_metrics.append((accuracy, precision, recall, f1))
 
-
-# configure the EEGNet-8,2,16 model with kernel length of 32 samples
-model = EEGNet(nb_classes = 4, Chans = chans, Samples = samples,
-               dropoutRate = 0.5, kernLength = 32, F1 = 8, D = 2, F2 = 16,
-               dropoutType = 'Dropout')
-
-# compile the model and set the optimizers
-model.compile(loss='categorical_crossentropy', optimizer='adam',
-              metrics = ['accuracy'])
-
-# count number of parameters in the model
-numParams    = model.count_params()
-
-# set a valid path for your system to record model checkpoints
-checkpointer = ModelCheckpoint(filepath='/tmp/checkpoint.h5', verbose=1,
-                               save_best_only=True)
-
-
-# print(f"Total samples: {X_all.shape[0]}")
-# print(f"Feature shape: {X_all.shape[1:]}")  # (n_channels, n_times)
-# print(f"Labels shape: {y_all.shape}")
-# print(f"Subjects shape: {subjects_all.shape}")
-# print(X_all.shape, y_all.shape, subjects_all.shape)
-# print("Unique labels:", np.unique(np.argmax(y_all, axis=1)))
-# print("Unique subjects:", np.unique(subjects_all))
-# print("Sample feature shape:", X_all[0].shape)
-# print("Sample label (one-hot):", y_all[0])
+        print(f"Test Accuracy: {accuracy:.4f}")
+        print(f"Test Precision: {precision:.4f}")
+        print(f"Test Recall: {recall:.4f}")
+        print(f"Test F1-score: {f1:.4f}")
+        
+        
