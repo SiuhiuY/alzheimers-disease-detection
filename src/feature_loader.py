@@ -45,6 +45,8 @@ def load_features(label_map, band="alpha"):
     all_features = []
     all_labels = []
     all_subjects = []
+    min_windows = 0
+    max_windows = 0
 
     # Load features and match with labels
     feature_files = [
@@ -71,10 +73,18 @@ def load_features(label_map, band="alpha"):
             all_labels.extend(subj_labels)
             all_subjects.extend(subj_ids)
 
+            if num_windows < min_windows or min_windows == 0:
+                min_windows = num_windows
+            if num_windows > max_windows:
+                max_windows = num_windows
+
     # Convert lists to numpy arrays
     X_all = np.concatenate(all_features, axis=0).astype(np.float32)
     y_all = np.array(all_labels, dtype=np.int64)
     subjects_all = np.array(all_subjects, dtype=object)
+
+    print(f"Min windows per subject: {min_windows}")
+    print(f"Max windows per subject: {max_windows}")
 
     return X_all, y_all, subjects_all
 
