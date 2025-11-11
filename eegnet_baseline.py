@@ -10,6 +10,7 @@ from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLRO
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras import backend as K
 from sklearn.model_selection import LeaveOneGroupOut, StratifiedGroupKFold
+from sklearn.utils import class_weight
 from sklearn.metrics import (confusion_matrix, accuracy_score,
                              precision_score, recall_score, f1_score)
 from src.models.EEGNet import EEGNet
@@ -209,6 +210,16 @@ if __name__ == "__main__":
             subjects_all[test_idx]
         )
 
+        # Compute class weights to handle class imbalance
+        classes = np.unique(y_train_val)
+        class_weights = class_weight.compute_class_weight(
+            class_weight='balanced',
+            classes=classes,
+            y=y_train_val
+        )
+        class_weight_dict = dict(zip(classes, class_weights))
+        print(f"Class weights: {class_weight_dict}")
+
         # Inner Kfold cross validation for hyperparameter tuning
         for inner_fold, (train_ind, val_ind) in enumerate(
             inner_loop.split(
@@ -263,6 +274,7 @@ if __name__ == "__main__":
             history = model.fit(X_train, y_train,
                                 validation_data=(X_val, y_val),
                                 epochs=20, batch_size=64, verbose=0,
+                                class_weight=class_weight_dict,
                                 callbacks=[inner_callback])
 
             # Model weights loading from best epoch
@@ -277,6 +289,7 @@ if __name__ == "__main__":
 
         model.fit(X_train_val, y_train_val,
                     epochs=20, batch_size=64, verbose=0,
+                    class_weight=class_weight_dict,
                     callbacks=[callback])
 
         # Evaluate on the test set
