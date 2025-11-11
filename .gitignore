@@ -114,11 +114,17 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Project specific ignores
+# Project-specific ignores
 data/
 Tutorials/
 *.fif
 *.set
-jobs/*.out
-jobs/*.err
+
+# Logs and results
+logs/
+results/
+*.log
+*.out
+*.err
+wandb/
 
