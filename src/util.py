@@ -44,8 +44,8 @@ def min_max_normalise(features, train_ind, test_ind):
     test_features = features[test_ind]
 
     # Compute min and max for pixels across all windows in training set
-    train_min = train_features.min(axis=(0, 2, 3), keepdims=True)
-    train_max = train_features.max(axis=(0, 2, 3), keepdims=True)
+    train_min = train_features.min()
+    train_max = train_features.max()
 
     eps = 1e-8  # to avoid division by zero
     train_features = (train_features - train_min) / (
