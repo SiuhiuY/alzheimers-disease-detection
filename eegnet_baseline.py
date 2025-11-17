@@ -1,30 +1,92 @@
+"""
+Nested Cross-Validation for EEGNet Hyperparameter Tuning and Evaluation
+-----------------------------------------------------------------------
+
+Nested cross-validation logic
+-----------------------------
+For each outer fold of Leave-One-Subject-Out (LOSO) CV:
+    1. Split data: train/val (all other subjects) and test (one subject) sets
+
+    2. Hyperparameter tuning:
+        for each hyperparameter combination c in C:
+            Inner K-Fold CV:
+                For each inner fold:
+                    Split train and validation sets
+                    - Train model with hyperparameter c
+                    - Evaluate on validation set
+                    - Collect validation accuracy
+                Calculate average validation accuracy
+                for c across all inner folds
+
+        Select best hyperparameter c* (highest average validation accuracy)
+
+    3. Evaluate on outer test set:
+        - Train model with best hyperparameter c* on entire train/val set
+        - Evaluate model with on test set subject
+        - Collect test metrics:
+          accuracy, precision, recall, f1_score, auc, confusion_matrix
+        - Store best hyperparameter c* and test metrics for this outer fold
+
+Average test results across all outer folds:
+    - Average test performance (mean ± std)
+    - Report model's generalisation capability on entire dataset
+
+Implementation structure
+------------------------
+objective(): trains and evaluates model on a single fold
+objective_cv(): runs all inner folds for one hyperparameter configuration
+main execution: runs all outer folds for each outer fold, calls objective_cv()
+
+Metrics stored
+--------------
+Inner CV:
+    - Validation accuracy averaged across inner folds
+
+Outer CV:
+    - Test accuracy, precision, recall, f1_score, auc, confusion_matrix
+      for each outer fold
+    - Best hyperparameters for each outer fold
+
+Overall:
+    - Mean and std of all test metrics across outer folds
+"""
+
 import os
 import mne
 import numpy as np
 import pandas as pd
 import random
+import wandb
+import optuna
+import logging
+import gc
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
-from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.optimizers import Adam, RMSprop, AdamW
+from tensorflow.keras.callbacks import (ModelCheckpoint, EarlyStopping,
+                                        ReduceLROnPlateau)
 from tensorflow.keras import backend as K
+from wandb.integration.keras import WandbMetricsLogger
 from sklearn.model_selection import LeaveOneGroupOut, StratifiedGroupKFold
 from sklearn.utils import class_weight
-from sklearn.metrics import (confusion_matrix, accuracy_score,
+from sklearn.metrics import (confusion_matrix, accuracy_score, roc_auc_score,
                              precision_score, recall_score, f1_score)
 from src.models.EEGNet import EEGNet
 from src.eeg_processor import EEGProcessor
 from src.subject_processor import SubjectProcessor
 
-# Set random seed
+# Reference:
+# https://stackoverflow.com/questions/63224426/how-can-i-cross-validate-by-pytorch-and-optuna
+
+# ----------------------------------------------------------------------------
+#                          Configuration Settings
+# ----------------------------------------------------------------------------
+
 RANDOM_SEED = 123
 
-# Set up logging
-
-
 # GPU configuration
-gpus = tf.config.experimental.list_physical_devices('GPU')
+gpus = tf.config.experimental.list_physical_devices("GPU")
 if gpus:
     try:
         for gpu in gpus:
@@ -33,6 +95,13 @@ if gpus:
     except RuntimeError as e:
         print(e)
 
+# Remove unwanted warnings
+logging.getLogger("tensorflow").disabled = True
+
+
+# ----------------------------------------------------------------------------
+#                             Helper Functions
+# ----------------------------------------------------------------------------
 
 def reproducibility(seed):
     """Set seeds for reproducibility across different libraries.
@@ -40,13 +109,13 @@ def reproducibility(seed):
     Args:
         seed (int): The seed value to set.
     """
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
 
     keras.utils.set_random_seed(seed)
     tf.config.experimental.enable_op_determinism()
 
 
-def load_eeg_data(label_map):
+def load_eeg_data(label_map, chans, samples, kernels, downsample_to=None):
     """Load EEG data for all subjects and prepare for EEGNet.
 
     Args:
@@ -77,7 +146,7 @@ def load_eeg_data(label_map):
 
     # Load subject IDs and labels
     label_df = pd.read_csv(LABEL_PATH, sep="\t")
-    label_dict = label_df.set_index("participant_id")['Group'].to_dict()
+    label_dict = label_df.set_index("participant_id")["Group"].to_dict()
 
     # Get valid groups from label_map
     valid_groups = set(label_map.keys())
@@ -100,17 +169,14 @@ def load_eeg_data(label_map):
         subj_id = os.path.basename(subj_dir)
 
         if subj_id in label_to_int:
-            subj_path = os.path.join(PROCESSED_DIR, subj_dir, "eeg",
+            subj_path = os.path.join(subj_dir, "eeg",
                                      f"{subj_id}_task-eyesclosed_eeg.set")
-
-            if not os.path.exists(subj_path):
-                raise FileNotFoundError(
-                    f"EEG file for subject {subj_id} not found at {subj_path}."
-                )
-            print(f"Loading data for subject {subj_id}...")
-
             processor = EEGProcessor(PROCESSED_DIR, subj_path)
             processor.load_data()
+            raw = processor.raw
+
+            if downsample_to is not None:
+                raw.resample(downsample_to)
 
             # Epoch the data into 4-second segments with 2-second overlap
             processor.epoch_data(duration=4.0, overlap=2.0)
@@ -118,6 +184,7 @@ def load_eeg_data(label_map):
 
             # Extract epoched data as NumPy array
             # Shape: (n_epochs, n_channels, n_times per epoch)
+            # Scale the signal values by 1000 as in the EEGNet source code
             subj_feature = signals.get_data() * 1000
 
             # Get the number of epochs and class label for the subject
@@ -143,62 +210,357 @@ def load_eeg_data(label_map):
     y_all = np.array(all_labels, dtype=np.int64)
     subjects_all = np.array(all_subjects, dtype=object)
 
+    # Reshape X_all for EEGNet input: (n_epochs, n_channels, n_times, 1)
+    X_all = X_all.reshape(X_all.shape[0], chans, samples, kernels)
+
     print(f"Minimum epochs per subject: {min_epochs}")
     print(f"Maximum epochs per subject: {max_epochs}")
 
     return X_all, y_all, subjects_all
 
 
+def calculate_metrics(model, X_test, y_test, threshold=0.5):
+    """Calculate evaluation metrics on the test set.
+
+    Args:
+        model (tf.keras.Model): Trained EEGNet model
+        X_test (np.ndarray): Test features of shape
+                             (n_samples, n_channels, n_times, 1)
+        y_test (np.ndarray): True labels of shape (n_samples,)
+        threshold (float): Threshold for binary classification
+
+    Returns:
+        dict: Dictionary containing accuracy, precision, recall,
+              f1_score, auc, and confusion_matrix.
+    """
+    # Get model predictions
+    y_pred_probs = model.predict(X_test)
+    y_pred = (y_pred_probs >= threshold).astype(int)
+
+    # Calculate metrics
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred, zero_division=0)
+    recall = recall_score(y_test, y_pred, zero_division=0)
+    f1 = f1_score(y_test, y_pred, zero_division=0)
+    auc = roc_auc_score(y_test, y_pred_probs)
+    cm = confusion_matrix(y_test, y_pred)
+
+    return {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1_score": f1,
+        "auc": auc,
+        "confusion_matrix": cm
+    }
+
+
+def calculate_class_weights(y):
+    """Compute class weights.
+    Args:
+        y (np.ndarray): Array of shape (n_samples,) containing class labels.
+
+    Returns:
+        dict: Dictionary mapping class indices to weights.
+    """
+    classes = np.unique(y)
+    weights = class_weight.compute_class_weight(
+        class_weight="balanced",
+        classes=classes,
+        y=y
+    )
+    class_weight_dict = dict(zip(classes, weights))
+
+    return class_weight_dict
+
+
+def get_optimizer(optimizer_name, lr):
+    """Get the optimizer instance based on the name.
+
+    Args:
+        optimizer_name (str): Name of the optimizer
+            ("Adam", "RMSprop", "AdamW").
+        lr (float): Learning rate.
+
+    Returns:
+        tf.keras.optimizers.Optimizer: Optimizer instance.
+    """
+    optimiser_dict = {
+        "adam": Adam(learning_rate=lr),
+        "rmsprop": RMSprop(learning_rate=lr),
+        "adamw": AdamW(learning_rate=lr)
+    }
+    return optimiser_dict.get(optimizer_name.lower())
+
+
+def build_model(params, num_classes, chans, samples):
+    """Build and compile the EEGNet model.
+
+    Returns:
+        Model: Compiled Keras EEGNet model.
+    """
+    # Suggest hyperparameters
+    F1 = params["F1"]
+    D = params["D"]
+    F2 = F1 * D
+    dropoutRate = params["dropoutRate"]
+    kernLength = params["kernLength"]
+    dropoutType = params["dropoutType"]
+    lr = params["learning_rate"]
+    optimizer_name = params["optimizer"]
+    optimizer = get_optimizer(optimizer_name, lr)
+
+    # Build EEGNet model
+    model = EEGNet(nb_classes=num_classes,
+                   Chans=chans,
+                   Samples=samples,
+                   dropoutRate=dropoutRate,
+                   kernLength=kernLength,
+                   F1=F1, D=D, F2=F2,
+                   dropoutType=dropoutType)
+
+    # Compile the model
+    model.compile(loss="binary_crossentropy",
+                  optimizer=optimizer,
+                  metrics=["accuracy"])
+
+    return model
+
+
+# ----------------------------------------------------------------------------
+#                       Single Fold Training Function
+# ----------------------------------------------------------------------------
+
+def objective(params, X_train, y_train,
+              X_val, y_val, num_classes, chans, samples):
+    """Objective function for hyperparameter optimisation using Optuna.
+
+    Args:
+        trial (optuna.trial.Trial): An Optuna trial object.
+        X (np.ndarray): Training features.
+        y (np.ndarray): Training labels.
+
+    Returns:
+        float: Validation accuracy for the trial.
+    """
+    # Clear clutter from previous session graphs
+    K.clear_session()
+
+    # Suggest batch size
+    batch_size = params["batch_size"]
+
+    # Define callbacks
+    early_stopping = EarlyStopping(monitor="val_loss",
+                                   patience=3,
+                                   restore_best_weights=True,
+                                   verbose=0)
+    reduce_lr = ReduceLROnPlateau(monitor="val_loss",
+                                  factor=0.5,
+                                  patience=2,
+                                  min_lr=1e-6,
+                                  verbose=0)
+
+    # Build model
+    model = build_model(params, num_classes, chans, samples)
+
+    # Train model
+    history = model.fit(X_train, y_train,
+                        validation_data=(X_val, y_val),
+                        batch_size=batch_size,
+                        epochs=20,
+                        class_weight=calculate_class_weights(y_train),
+                        callbacks=[
+                            early_stopping,
+                            reduce_lr
+                            ],
+                        verbose=0)
+
+    # Evaluate on validation set
+    val_loss, val_accuracy = model.evaluate(X_val, y_val, verbose=0)
+
+    # Get the number of epochs the model was trained for
+    epochs_trained = len(history.history["loss"])
+
+    # Clear session
+    del model
+    K.clear_session()
+    gc.collect()
+
+    return val_accuracy, epochs_trained
+
+
+# ----------------------------------------------------------------------------
+#                   Training All Folds in Inner CV Function
+# ----------------------------------------------------------------------------
+
+def objective_cv(trial, inner_cv, X_train_val, y_train_val,
+                 subjects_train_val, num_classes, chans, samples
+                 ):
+    """
+
+    Args:
+        trial (optuna.trial.Trial): An Optuna trial object.
+
+    Returns:
+        float: Validation accuracy for the trial.
+    """
+    # Suggest hyperparameters
+    params = {
+        "F1": trial.suggest_int("F1", 4, 16),
+        "D": trial.suggest_int("D", 1, 4),
+        "dropoutRate": trial.suggest_float("dropoutRate", 0.1, 0.7, step=0.1),
+        "kernLength": trial.suggest_categorical("kernLength", [32, 64, 128]),
+        "dropoutType": trial.suggest_categorical(
+            "dropoutType", ["Dropout", "SpatialDropout2D"]
+        ),
+        "learning_rate": trial.suggest_categorical(
+            "learning_rate", [1e-2, 1e-3, 1e-4]),
+        "optimizer": trial.suggest_categorical(
+            "optimizer", ["adam", "adamw", "rmsprop"]),
+        "batch_size": trial.suggest_categorical("batch_size", [16, 32, 64])
+        }
+
+    # Inner cross-validation
+    fold_scores = []
+    epochs_lst = []
+
+    for inner_fold, (train_idx, val_idx) in enumerate(
+        inner_cv.split(X_train_val, y_train_val,
+                       groups=subjects_train_val)
+    ):
+        print(f"\n--- Inner Fold {inner_fold + 1} ---")
+
+        # Split train and validation sets
+        X_train, y_train, _ = (
+            X_train_val[train_idx],
+            y_train_val[train_idx],
+            subjects_train_val[train_idx]
+        )
+        X_val, y_val, _ = (
+            X_train_val[val_idx],
+            y_train_val[val_idx],
+            subjects_train_val[val_idx]
+        )
+
+        # Train and evaluate the model for this fold
+        val_acc, epochs_trained = objective(params, X_train, y_train,
+                                            X_val, y_val, num_classes,
+                                            chans, samples)
+
+        # Store fold score
+        fold_scores.append(val_acc)
+        epochs_lst.append(epochs_trained)
+
+        # Report intermediate objective value to Optuna
+        trial.report(np.mean(fold_scores), inner_fold)
+        if trial.should_prune():
+            raise optuna.TrialPruned()
+
+        # Clear session
+        K.clear_session()
+        gc.collect()
+
+    # Log average validation accuracy and number of epochs across inner folds
+    avg_val_accuracy = np.mean(fold_scores)
+    std_val_accuracy = np.std(fold_scores)
+    avg_epochs = np.mean(epochs_lst)
+
+    # Store average number of epochs in trial user attributes
+    trial.set_user_attr("avg_epochs", avg_epochs)
+
+    print(f"\nMean Validation Accuracy across Inner Folds: {avg_val_accuracy}")
+    print(f"Std of Validation Accuracy across Inner Folds: {std_val_accuracy}")
+
+    return avg_val_accuracy
+
+
+# ----------------------------------------------------------------------------
+#                               Main Execution
+# ----------------------------------------------------------------------------
+
 if __name__ == "__main__":
 
-    # Set seed for reproducibility
+    # Set seeds for reproducibility
     reproducibility(RANDOM_SEED)
 
-    # Define label map
+    # Initialise logging for WandB
+    project = "Thesis"
+    model_name = "EEGNet_baseline_AD_CN"
+    config = {
+        "label_map": "AD_CN",
+        "num_classes": 1,
+        "sampling_rate": 250,
+        "epoch_duration": 4,
+        "architecture": "EEGNet-8,2,16",
+        "cross_validation": "nested_LOSO_10fold",
+        "random_seed": RANDOM_SEED
+    }
+    wandb.init(project=project,
+               name=model_name,
+               config=config)
+    print("WandB logging initialised.")
+
+    # Define labels and load data
     AD_FTD_CN = {"A": 0, "F": 1, "C": 2}
     AD_CN = {"A": 1, "C": 0}
     FTD_CN = {"F": 1, "C": 0}
     AD_FTD = {"A": 1, "F": 0}
-    label_map = FTD_CN
-    num_classes = len(label_map)
-
-    # Load EEG data
-    X_all, y_all, subjects_all = load_eeg_data(label_map)
-    print("Classifing groups:", list(label_map.keys()))
+    label_map = AD_CN
+    num_classes = 1  # Binary classification
 
     # Define EEGNet input shape parameters
-    sampling_rate = 500  # Hz
+    sampling_rate = 250  # Hz
     epoch_duration = 4   # seconds
-    samples = sampling_rate * epoch_duration  # 2000 samples
-    chans = X_all.shape[1]  # Number of EEG channels
+    samples = sampling_rate * epoch_duration  # 1000 samples
+    chans = 19  # Number of EEG channels
     kernels = 1  # Single kernel/channel
 
+    print("Loading EEG data...")
+    X_all, y_all, subjects_all = load_eeg_data(label_map, chans, samples,
+                                               kernels, downsample_to=250)
+    print("Data loading complete.")
+    print("Classifing between classes:", label_map)
+
     # Initialise cross validation
-    outer_loop = LeaveOneGroupOut()
-    inner_loop = StratifiedGroupKFold(
+    outer_cv = LeaveOneGroupOut()
+    inner_cv = StratifiedGroupKFold(
         n_splits=10, shuffle=True, random_state=RANDOM_SEED
-    )
-    min_epochs = 0
-    all_metrics = []
+        )
 
-    # Model checkpoints and early stopping
-    # checkpointer = ModelCheckpoint(
-    callback = EarlyStopping(monitor='loss', patience=10, restore_best_weights=True)
+    # Store results across outer folds
+    all_acc = []
+    all_precisions = []
+    all_recalls = []
+    all_f1_scores = []
+    all_aucs = []
+    all_cms = []
+    best_models = []
+    all_best_params = []
 
-    # Outer Leave-One-Subject-Out cross-validation for model evaluation
+    # Model checkpoint and early stopping for outer folds
+    checkpoint_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "results", model_name)
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
+    # Outer Leave-One-Subject-Out Cross-Validation for model evaluation
     for outer_fold, (train_val_idx, test_idx) in enumerate(
-        outer_loop.split(X_all, y_all, groups=subjects_all)
+        outer_cv.split(X_all, y_all, groups=subjects_all)
     ):
-        total_outer = outer_loop.get_n_splits(groups=subjects_all)
-        print(f"Training outer fold {outer_fold + 1} of {total_outer} folds:")
+        print(f"\n--- Outer Fold {outer_fold + 1} ---")
 
-        if len(
-            set(np.unique(subjects_all[train_val_idx])) &
-            set(np.unique(subjects_all[test_idx]))
-        ) != 0:
-            raise ValueError("Subjects overlap between train and test sets!")
+        # Create checkpoint and early stopping callbacks
+        checkpointer = ModelCheckpoint(
+            filepath=os.path.join(
+                checkpoint_dir,
+                f"best_model_outer_fold_{outer_fold+1}.keras"),
+            monitor="loss",
+            save_best_only=True,
+            mode="min",
+            verbose=0
+        )
 
-        # Split data into training and testing sets for this fold
+        # Split train/validation and test sets
         X_train_val, y_train_val, subjects_train_val = (
             X_all[train_val_idx],
             y_all[train_val_idx],
@@ -210,108 +572,64 @@ if __name__ == "__main__":
             subjects_all[test_idx]
         )
 
-        # Compute class weights to handle class imbalance
-        classes = np.unique(y_train_val)
-        class_weights = class_weight.compute_class_weight(
-            class_weight='balanced',
-            classes=classes,
-            y=y_train_val
-        )
-        class_weight_dict = dict(zip(classes, class_weights))
-        print(f"Class weights: {class_weight_dict}")
+        # Run hyperparameter optimisation with inner CV
+        # to find the best configuration for this outer fold
+        study = optuna.create_study(
+            direction="maximize",
+            study_name=f"Outer_Fold_{outer_fold + 1}",
+            sampler=optuna.samplers.TPESampler(seed=RANDOM_SEED),
+            pruner=optuna.pruners.MedianPruner(n_startup_trials=5))
 
-        # Inner Kfold cross validation for hyperparameter tuning
-        for inner_fold, (train_ind, val_ind) in enumerate(
-            inner_loop.split(
-                X_train_val, y_train_val, groups=subjects_train_val)
-        ):
-            print(
-                f"Training inner fold {inner_fold + 1} of "
-                f"{inner_loop.get_n_splits()} folds:"
+        study.optimize(
+            lambda trial: objective_cv(
+                trial, inner_cv, X_train_val, y_train_val,
+                subjects_train_val, num_classes, chans, samples
+                ),
+            n_trials=20)
+
+        # Retrieve the best model from the study
+        best_trial = study.best_trial
+        best_score = best_trial.value
+        best_params = best_trial.params
+        all_best_params.append(best_params)
+
+        print(f"Best validation accuracy: {best_score}")
+        print("Best hyperparameters: ")
+        for key, value in best_params.items():
+            print(f"    {key}: {value}")
+
+        # Retrain best model on entire train/val set
+        # Build new model with best hyperparameters
+        new_model = build_model(best_params, num_classes, chans, samples)
+        best_epochs = int(round(best_trial.user_attrs["avg_epochs"]))
+
+        new_model.fit(X_train_val, y_train_val,
+                      epochs=best_epochs,
+                      batch_size=best_params["batch_size"],
+                      class_weight=calculate_class_weights(y_train_val),
+                      callbacks=[
+                          checkpointer,
+                          WandbMetricsLogger(log_freq=1)
+                          ],
+                      verbose=1)
+
+        model_filepath = os.path.join(
+            checkpoint_dir,
+            f"best_model_outer_fold_{outer_fold+1}.keras"
             )
 
-            if len(
-                set(np.unique(subjects_train_val[train_ind])) &
-                set(np.unique(subjects_train_val[val_ind]))
-            ) != 0:
-                raise ValueError(
-                    "Subjects overlap between inner train and val sets!"
-                )
+        # Reload the best model weights
+        new_model = keras.models.load_model(model_filepath)
+        new_model.load_weights(model_filepath)
 
-            # Split data into training and validation sets for this fold
-            X_train, y_train, subjects_train = (
-                X_train_val[train_ind],
-                y_train_val[train_ind],
-                subjects_train_val[train_ind]
+        # Evaluate the best configuration on the test set for this outer fold
+        y_pred_probs = new_model.predict(X_test)
+        y_pred = (y_pred_probs >= 0.5).astype(int)
+        test_metrics = calculate_metrics(new_model, X_test, y_test)
+
+        # Log test metrics to WandB
+        class_names = [
+            k for k, v in sorted(
+                label_map.items(), key=lambda item: item[1]
             )
-            X_val, y_val, subjects_val = (
-                X_train_val[val_ind],
-                y_train_val[val_ind],
-                subjects_train_val[val_ind]
-            )
-
-            # Reshape features for EEGNet input
-            # EEGNet expects input shape: (n_epochs, n_channels, n_times, 1)
-            X_train = X_train.reshape(X_train.shape[0], chans, samples, kernels)
-            X_val = X_val.reshape(X_val.shape[0], chans, samples, kernels)
-
-            # Configure the EEGNet-8,2,16 model with kernel length of 32 samples
-            model = EEGNet(nb_classes=num_classes, Chans=chans, Samples=samples,
-                           dropoutRate=0.5, kernLength=64, F1=8, D=2, F2=16,
-                           dropoutType='Dropout')
-
-            # Compile the model and set the optimizers
-            model.compile(loss='binary_crossentropy', optimizer='adam',
-                          metrics=['accuracy'])
-
-            # Count number of parameters in the model
-            numParams = model.count_params()
-
-            # Inner early stopping
-            inner_callback = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True) 
-
-            # Model training
-            history = model.fit(X_train, y_train,
-                                validation_data=(X_val, y_val),
-                                epochs=20, batch_size=64, verbose=0,
-                                class_weight=class_weight_dict,
-                                callbacks=[inner_callback])
-
-            # Model weights loading from best epoch
-            # model.load_weights(checkpointer.filepath)
-
-            # Clear Keras session to free memory after each inner fold
-            K.clear_session()
-
-        # Train on the whole training-val set
-        X_train_val = X_train_val.reshape(X_train_val.shape[0], chans, samples, kernels)
-        X_test = X_test.reshape(X_test.shape[0], chans, samples, kernels)
-
-        model.fit(X_train_val, y_train_val,
-                    epochs=20, batch_size=64, verbose=0,
-                    class_weight=class_weight_dict,
-                    callbacks=[callback])
-
-        # Evaluate on the test set
-        test_subject = subjects_test[0]
-        print(f"Evaluating on test subject: {test_subject}")
-        test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
-
-        # Get predict probabilities and classes
-        y_pred_prob = model.predict(X_test).flatten()
-        y_pred_labels = (y_pred_prob > 0.5).astype(int)
-
-        accuracy = accuracy_score(y_test, y_pred_labels)
-        precision = precision_score(y_test, y_pred_labels, average='binary', zero_division=0)
-        recall = recall_score(y_test, y_pred_labels, average='binary', zero_division=0)
-        f1 = f1_score(y_test, y_pred_labels, average='binary', zero_division=0)
-        cm = confusion_matrix(y_test, y_pred_labels)
-
-        # Clear Keras session to free memory after each outer fold
-        K.clear_session()
-
-        print(f"Test Accuracy: {accuracy:.4f}")
-        print(f"Test Precision: {precision:.4f}")
-        print(f"Test Recall: {recall:.4f}")
-        print(f"Test F1-score: {f1:.4f}")
-        print(f"Confusion Matrix:\n{cm}\n")
+        ]
