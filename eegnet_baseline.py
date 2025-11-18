@@ -60,6 +60,7 @@ import wandb
 import optuna
 import logging
 import gc
+import pickle
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow import keras
@@ -78,6 +79,7 @@ from src.subject_processor import SubjectProcessor
 
 # Reference:
 # https://stackoverflow.com/questions/63224426/how-can-i-cross-validate-by-pytorch-and-optuna
+# https://medium.com/optuna/optuna-meets-weights-and-biases-58fc6bab893
 
 # ----------------------------------------------------------------------------
 #                          Configuration Settings
@@ -120,6 +122,11 @@ def load_eeg_data(label_map, chans, samples, kernels, downsample_to=None):
 
     Args:
         label_map (dict): Mapping of class names to integer labels.
+        chans (int): Number of EEG channels.
+        samples (int): Number of time samples per epoch.
+        kernels (int): Number of kernels for EEGNet.
+        downsample_to (int, optional): Frequency to downsample the data to.
+            If None, no downsampling is performed. Defaults to None.
 
     Returns:
         tuple: (X_all, y_all, subjects_all)
@@ -251,7 +258,10 @@ def calculate_metrics(model, X_test, y_test, threshold=0.5):
         "recall": recall,
         "f1_score": f1,
         "auc": auc,
-        "confusion_matrix": cm
+        "confusion_matrix": cm,
+        "y_true": y_test,
+        "y_pred_probs": y_pred_probs,
+        "y_pred": y_pred
     }
 
 
@@ -296,6 +306,12 @@ def get_optimizer(optimizer_name, lr):
 def build_model(params, num_classes, chans, samples):
     """Build and compile the EEGNet model.
 
+    Args:
+        params (dict): Hyperparameters for the model.
+        num_classes (int): Number of output classes.
+        chans (int): Number of EEG channels.
+        samples (int): Number of time samples per epoch.
+
     Returns:
         Model: Compiled Keras EEGNet model.
     """
@@ -337,11 +353,19 @@ def objective(params, X_train, y_train,
 
     Args:
         trial (optuna.trial.Trial): An Optuna trial object.
+        X_train (np.ndarray): Training features.
+        y_train (np.ndarray): Training labels.
+        X_val (np.ndarray): Validation features.
+        y_val (np.ndarray): Validation labels.
         X (np.ndarray): Training features.
         y (np.ndarray): Training labels.
+        num_classes (int): Number of output classes.
+        chans (int): Number of EEG channels.
+        samples (int): Number of time samples per epoch.
 
     Returns:
         float: Validation accuracy for the trial.
+        epochs_trained (int): Number of epochs the model was trained for.
     """
     # Clear clutter from previous session graphs
     K.clear_session()
@@ -371,9 +395,10 @@ def objective(params, X_train, y_train,
                         class_weight=calculate_class_weights(y_train),
                         callbacks=[
                             early_stopping,
-                            reduce_lr
+                            reduce_lr,
+                            WandbMetricsLogger(log_freq=1)
                             ],
-                        verbose=0)
+                        verbose=1)
 
     # Evaluate on validation set
     val_loss, val_accuracy = model.evaluate(X_val, y_val, verbose=0)
@@ -393,13 +418,23 @@ def objective(params, X_train, y_train,
 #                   Training All Folds in Inner CV Function
 # ----------------------------------------------------------------------------
 
-def objective_cv(trial, inner_cv, X_train_val, y_train_val,
-                 subjects_train_val, num_classes, chans, samples
+def objective_cv(trial, outer_fold, inner_cv, X_train_val, y_train_val,
+                 subjects_train_val, num_classes, chans, samples, class_names
                  ):
     """
 
     Args:
         trial (optuna.trial.Trial): An Optuna trial object.
+        outer_fold (int): Current outer fold index.
+        inner_cv (StratifiedGroupKFold): Inner cross-validation splitter.
+        X_train_val (np.ndarray): Training and validation features.
+        y_train_val (np.ndarray): Training and validation labels.
+        subjects_train_val (np.ndarray): 
+            Subject IDs for training/validation data.
+        num_classes (int): Number of output classes.
+        chans (int): Number of EEG channels.
+        samples (int): Number of time samples per epoch.
+        class_names (list): List of class names.
 
     Returns:
         float: Validation accuracy for the trial.
@@ -423,6 +458,18 @@ def objective_cv(trial, inner_cv, X_train_val, y_train_val,
     # Inner cross-validation
     fold_scores = []
     epochs_lst = []
+
+    # Initialise wandb logging for monitoring learning process
+    config = params
+    config["trial.number"] = trial.number
+    wandb.init(
+        project=f"EEGNet_Nested_CV_{'_'.join(class_names)}",
+        name=f"Outer_Fold{outer_fold + 1}_Trial_{trial.number + 1}",
+        config=config,
+        group=f"Outer_Fold_{outer_fold + 1}",
+        job_type="tuning",
+        reinit=True
+    )
 
     for inner_fold, (train_idx, val_idx) in enumerate(
         inner_cv.split(X_train_val, y_train_val,
@@ -451,10 +498,15 @@ def objective_cv(trial, inner_cv, X_train_val, y_train_val,
         fold_scores.append(val_acc)
         epochs_lst.append(epochs_trained)
 
-        # Report intermediate objective value to Optuna
+        # Report intermediate objective value to Optuna for pruning
         trial.report(np.mean(fold_scores), inner_fold)
         if trial.should_prune():
+            wandb.run.summary["state"] = "pruned"
+            wandb.finish(quiet=True)
             raise optuna.TrialPruned()
+
+        # Log validation accuracy to WandB
+        wandb.log({"inner_fold_val_accuracy": val_acc}, step=inner_fold)
 
         # Clear session
         K.clear_session()
@@ -464,6 +516,11 @@ def objective_cv(trial, inner_cv, X_train_val, y_train_val,
     avg_val_accuracy = np.mean(fold_scores)
     std_val_accuracy = np.std(fold_scores)
     avg_epochs = np.mean(epochs_lst)
+    wandb.run.summary["avg_val_accuracy"] = avg_val_accuracy
+    wandb.run.summary["std_val_accuracy"] = std_val_accuracy
+    wandb.run.summary["avg_epochs"] = avg_epochs
+    wandb.run.summary["state"] = "completed"
+    wandb.finish()
 
     # Store average number of epochs in trial user attributes
     trial.set_user_attr("avg_epochs", avg_epochs)
@@ -483,30 +540,19 @@ if __name__ == "__main__":
     # Set seeds for reproducibility
     reproducibility(RANDOM_SEED)
 
-    # Initialise logging for WandB
-    project = "Thesis"
-    model_name = "EEGNet_baseline_AD_CN"
-    config = {
-        "label_map": "AD_CN",
-        "num_classes": 1,
-        "sampling_rate": 250,
-        "epoch_duration": 4,
-        "architecture": "EEGNet-8,2,16",
-        "cross_validation": "nested_LOSO_10fold",
-        "random_seed": RANDOM_SEED
-    }
-    wandb.init(project=project,
-               name=model_name,
-               config=config)
-    print("WandB logging initialised.")
-
     # Define labels and load data
     AD_FTD_CN = {"A": 0, "F": 1, "C": 2}
     AD_CN = {"A": 1, "C": 0}
     FTD_CN = {"F": 1, "C": 0}
     AD_FTD = {"A": 1, "F": 0}
     label_map = AD_CN
+    model_name = f"EEGNet_{'_'.join(label_map.keys())}"
     num_classes = 1  # Binary classification
+    class_names = [
+        k for k, v in sorted(
+            label_map.items(), key=lambda item: item[1]
+        )
+    ]
 
     # Define EEGNet input shape parameters
     sampling_rate = 250  # Hz
@@ -527,38 +573,32 @@ if __name__ == "__main__":
         n_splits=10, shuffle=True, random_state=RANDOM_SEED
         )
 
-    # Store results across outer folds
-    all_acc = []
-    all_precisions = []
-    all_recalls = []
-    all_f1_scores = []
-    all_aucs = []
-    all_cms = []
-    best_models = []
-    all_best_params = []
+    # Initialise a dictionary to store overall results
+    all_results = {
+        "meta_data": {
+            "model_name": model_name,
+            "class_names": class_names,
+            "label_map": label_map,
+            "epoch_duration": epoch_duration,
+            "sampling_rate": sampling_rate,
+            "chans": chans,
+            "samples": samples
+        },
+        "outer_folds": [],
+        "subject_metadata": {}
+    }
 
     # Model checkpoint and early stopping for outer folds
-    checkpoint_dir = os.path.join(
+    result_dir = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "results", model_name)
-    os.makedirs(checkpoint_dir, exist_ok=True)
+        "results", model_name, "_".join(class_names))
+    os.makedirs(result_dir, exist_ok=True)
 
     # Outer Leave-One-Subject-Out Cross-Validation for model evaluation
     for outer_fold, (train_val_idx, test_idx) in enumerate(
         outer_cv.split(X_all, y_all, groups=subjects_all)
     ):
         print(f"\n--- Outer Fold {outer_fold + 1} ---")
-
-        # Create checkpoint and early stopping callbacks
-        checkpointer = ModelCheckpoint(
-            filepath=os.path.join(
-                checkpoint_dir,
-                f"best_model_outer_fold_{outer_fold+1}.keras"),
-            monitor="loss",
-            save_best_only=True,
-            mode="min",
-            verbose=0
-        )
 
         # Split train/validation and test sets
         X_train_val, y_train_val, subjects_train_val = (
@@ -571,6 +611,7 @@ if __name__ == "__main__":
             y_all[test_idx],
             subjects_all[test_idx]
         )
+        test_subject_id = subjects_test[0]
 
         # Run hyperparameter optimisation with inner CV
         # to find the best configuration for this outer fold
@@ -582,8 +623,8 @@ if __name__ == "__main__":
 
         study.optimize(
             lambda trial: objective_cv(
-                trial, inner_cv, X_train_val, y_train_val,
-                subjects_train_val, num_classes, chans, samples
+                trial, outer_fold, inner_cv, X_train_val, y_train_val,
+                subjects_train_val, num_classes, chans, samples, class_names
                 ),
             n_trials=20)
 
@@ -591,7 +632,6 @@ if __name__ == "__main__":
         best_trial = study.best_trial
         best_score = best_trial.value
         best_params = best_trial.params
-        all_best_params.append(best_params)
 
         print(f"Best validation accuracy: {best_score}")
         print("Best hyperparameters: ")
@@ -607,29 +647,55 @@ if __name__ == "__main__":
                       epochs=best_epochs,
                       batch_size=best_params["batch_size"],
                       class_weight=calculate_class_weights(y_train_val),
-                      callbacks=[
-                          checkpointer,
-                          WandbMetricsLogger(log_freq=1)
-                          ],
                       verbose=1)
 
+        # Save the best model weights for this outer fold
         model_filepath = os.path.join(
-            checkpoint_dir,
-            f"best_model_outer_fold_{outer_fold+1}.keras"
+            result_dir, f"best_model_outer_fold_{outer_fold+1}.keras"
             )
+        new_model.save_weights(model_filepath)
 
         # Reload the best model weights
-        new_model = keras.models.load_model(model_filepath)
         new_model.load_weights(model_filepath)
 
         # Evaluate the best configuration on the test set for this outer fold
-        y_pred_probs = new_model.predict(X_test)
-        y_pred = (y_pred_probs >= 0.5).astype(int)
         test_metrics = calculate_metrics(new_model, X_test, y_test)
+        print(f"Outer fold {outer_fold+1} Test Metrics:")
+        print(f"    Accuracy: {test_metrics['accuracy']}")
+        print(f"    Precision: {test_metrics['precision']}")
+        print(f"    Recall: {test_metrics['recall']}")
+        print(f"    F1 Score: {test_metrics['f1_score']}")
+        print(f"    AUC: {test_metrics['auc']}")
+        print(f"    Confusion Matrix:\n{test_metrics['confusion_matrix']}")
 
-        # Log test metrics to WandB
-        class_names = [
-            k for k, v in sorted(
-                label_map.items(), key=lambda item: item[1]
-            )
-        ]
+        # Store outer fold results
+        fold_result = {
+            "outer_fold": outer_fold + 1,
+            "test_subject_id": test_subject_id,
+            "best_params": best_params,
+            "best_epochs": best_epochs,
+            "model_filepath": model_filepath,
+
+            "test_accuracy": test_metrics["accuracy"],
+            "test_precision": test_metrics["precision"],
+            "test_recall": test_metrics["recall"],
+            "test_f1_score": test_metrics["f1_score"],
+            "test_auc": test_metrics["auc"],
+            "test_confusion_matrix": test_metrics["confusion_matrix"].tolist(),
+
+            "true_labels": test_metrics["y_true"].tolist(),
+            "pred_probs": test_metrics["y_pred_probs"].flatten().tolist(),
+            "pred_labels": test_metrics["y_pred"].tolist()
+            }
+
+        all_results["outer_folds"].append(fold_result)
+
+        # Clear session
+        del new_model
+        K.clear_session()
+        gc.collect()
+
+    with open(os.path.join(result_dir, "all_results.pkl"), "wb") as f:
+        pickle.dump(all_results, f)
+
+    print("Nested cross-validation complete. Results saved.")
