@@ -12,23 +12,20 @@ For each outer fold of Leave-One-Subject-Out (LOSO) CV:
             Inner K-Fold CV:
                 For each inner fold:
                     Split train and validation sets
-                    - Train model with hyperparameter c on training set
+                    - Train model with hyperparameter c
                     - Evaluate on validation set
                     - Collect validation accuracy
-                Calculate average validation accuracy for c
-                across all inner folds
+                Calculate average validation accuracy
+                for c across all inner folds
 
         Select best hyperparameter c* (highest average validation accuracy)
 
     3. Evaluate on outer test set:
         - Train model with best hyperparameter c* on entire train/val set
-        - Evaluate model with on test set subject based on metrics:
+        - Evaluate model with on test set subject
+        - Collect test metrics:
           accuracy, precision, recall, f1_score, auc, confusion_matrix
-        - Store results for this outer fold:
-          best model with its weights
-          best hyperparameter configuration c*
-          test metrics
-          predictions and ground truth labels
+        - Store best hyperparameter c* and test metrics for this outer fold
 
 Average test results across all outer folds:
     - Average test performance (mean ± std)
@@ -38,7 +35,7 @@ Implementation structure
 ------------------------
 objective(): trains and evaluates model on a single fold
 objective_cv(): runs all inner folds for one hyperparameter configuration
-main execution: runs all outer folds, calls objective_cv()
+main execution: runs all outer folds for each outer fold, calls objective_cv()
 
 Metrics stored
 --------------
@@ -49,12 +46,9 @@ Outer CV:
     - Test accuracy, precision, recall, f1_score, auc, confusion_matrix
       for each outer fold
     - Best hyperparameters for each outer fold
-    - Best model with its weights for each outer fold
-    - Predictions and ground truth labels for each outer fold test subject
 
 Overall:
     - Mean and std of all test metrics across outer folds
-    - Aggregated confusion matrix and ROC curve across all test subjects
 """
 
 import os
@@ -402,7 +396,6 @@ def objective(params, X_train, y_train,
                         callbacks=[
                             early_stopping,
                             reduce_lr,
-                            # monitor learning curve by epoch using WandB
                             WandbMetricsLogger(log_freq=1)
                             ],
                         verbose=1)
@@ -450,13 +443,13 @@ def objective_cv(trial, outer_fold, inner_cv, X_train_val, y_train_val,
     params = {
         "F1": trial.suggest_int("F1", 4, 16),
         "D": trial.suggest_int("D", 1, 4),
-        "dropoutRate": trial.suggest_float("dropoutRate", 0.1, 0.7, step=0.1),
+        "dropoutRate": trial.suggest_float("dropoutRate", 0.1, 0.5, step=0.1),
         "kernLength": trial.suggest_categorical("kernLength", [32, 64, 128]),
         "dropoutType": trial.suggest_categorical(
             "dropoutType", ["Dropout", "SpatialDropout2D"]
         ),
         "learning_rate": trial.suggest_categorical(
-            "learning_rate", [1e-2, 1e-3, 1e-4]),
+            "learning_rate", [1e-3, 3e-4, 1e-4]),
         "optimizer": trial.suggest_categorical(
             "optimizer", ["adam", "adamw", "rmsprop"]),
         "batch_size": trial.suggest_categorical("batch_size", [16, 32, 64])
@@ -466,7 +459,7 @@ def objective_cv(trial, outer_fold, inner_cv, X_train_val, y_train_val,
     fold_scores = []
     epochs_lst = []
 
-    # Initialise wandb logging for real-time monitoring of learning process
+    # Initialise wandb logging for monitoring learning process
     config = params
     config["trial.number"] = trial.number
     wandb.init(
@@ -513,7 +506,7 @@ def objective_cv(trial, outer_fold, inner_cv, X_train_val, y_train_val,
             raise optuna.TrialPruned()
 
         # Log validation accuracy to WandB
-        wandb.log({"inner_fold_val_accuracy": val_acc})
+        wandb.log({"inner_fold_val_accuracy": val_acc}, step=inner_fold)
 
         # Clear session
         K.clear_session()
@@ -577,7 +570,7 @@ if __name__ == "__main__":
     # Initialise cross validation
     outer_cv = LeaveOneGroupOut()
     inner_cv = StratifiedGroupKFold(
-        n_splits=10, shuffle=True, random_state=RANDOM_SEED
+        n_splits=5, shuffle=True, random_state=RANDOM_SEED
         )
 
     # Initialise a dictionary to store overall results
@@ -633,7 +626,7 @@ if __name__ == "__main__":
                 trial, outer_fold, inner_cv, X_train_val, y_train_val,
                 subjects_train_val, num_classes, chans, samples, class_names
                 ),
-            n_trials=20)
+            n_trials=10)
 
         # Retrieve the best model from the study
         best_trial = study.best_trial
