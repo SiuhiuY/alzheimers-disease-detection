@@ -30,7 +30,7 @@ def load_features(label_map, band="alpha"):
 
     # Load subject IDs and labels
     label_df = pd.read_csv(label_path, sep="\t")
-    label_dict = label_df.set_index("participant_id")['Group'].to_dict()
+    label_dict = label_df.set_index("participant_id")["Group"].to_dict()
 
     # Get valid groups from label_map
     valid_groups = set(label_map.keys())
@@ -45,6 +45,8 @@ def load_features(label_map, band="alpha"):
     all_features = []
     all_labels = []
     all_subjects = []
+
+    # Track number of samples per subject
     min_windows = 0
     max_windows = 0
 

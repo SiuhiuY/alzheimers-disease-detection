@@ -15,10 +15,15 @@ from src.model_trainer import ModelTrainer
 
 # Define device
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {DEVICE}")
 
 # Define data configuration
 LABEL_PATH = "data/participants.tsv"
-LABEL_MAP = {"A": 0, "F": 1, "C": 2}
+AD_FTD_CN = {"A": 0, "F": 1, "C": 2}
+AD_CN = {"A": 1, "C": 0}
+FTD_CN = {"F": 1, "C": 0}
+AD_FTD = {"A": 1, "F": 0}
+label_map = FTD_CN
 BAND = "alpha"
 
 # Define training configuration
@@ -35,7 +40,7 @@ def quick_run(model_name, test_size=0.2, seed=123):
 
     # Load data
     features, labels, subjects = load_features(
-        LABEL_PATH, LABEL_MAP, band=BAND
+        label_map=label_map, band=BAND
     )
 
     # Create a single train/test split stratified by class
@@ -91,7 +96,7 @@ def quick_run(model_name, test_size=0.2, seed=123):
 
 if __name__ == "__main__":
     quick_run(
-        CNNModel(4, 3),
+        CNNModel(4, 2),
         test_size=0.2,
         seed=123
     )

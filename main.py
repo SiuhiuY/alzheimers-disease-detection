@@ -4,18 +4,25 @@ from src.feature_loader import load_features
 from src.dataset import EEGDataset
 from src.models.CNN import CNNModel
 from cross_validation import CrossValidator
-from src.util import reproducability
+from src.model_trainer import ModelTrainer
+import src.util as util
 
 
 # Define device
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {DEVICE}")
 
 # Define data configuration
 LABEL_PATH = "data/participants.tsv"
-LABEL_MAP = {"A": 0, "F": 1, "C": 2}
+AD_FTD_CN = {"A": 0, "F": 1, "C": 2}
+AD_CN = {"A": 1, "C": 0}
+FTD_CN = {"F": 1, "C": 0}
+AD_FTD = {"A": 1, "F": 0}
+label_map = AD_CN
 BAND = "alpha"
 
 # Define training configuration
+RANDOM_SEED = 123
 BATCH_SIZE = 64
 NUM_EPOCHS = 50
 LEARNING_RATE = 0.001
@@ -23,16 +30,16 @@ LEARNING_RATE = 0.001
 
 def run_model(
     model_name, n_splits=5, outer_cv_strategy='loso',
-    inner_cv_strategy='sgkf', seed=123
+    inner_cv_strategy='sgkf', seed=RANDOM_SEED
 ):
     """Run the model training and evaluation pipeline."""
 
     # Set random seeds
-    reproducability(seed)
+    util.reproducability(seed)
 
     # Load data
     features, labels, subjects = load_features(
-        LABEL_PATH, LABEL_MAP, band=BAND
+        label_map, band=BAND
     )
 
     # Create dataset
@@ -47,7 +54,7 @@ def run_model(
         cv_strategy=outer_cv_strategy,
         n_splits=n_splits,
         shuffle=True,
-        random_state=42
+        random_state=seed
     )
 
     all_metrics = []

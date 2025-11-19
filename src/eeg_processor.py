@@ -16,11 +16,11 @@ class EEGProcessor:
     """
 
     VALID_BANDS = {
-            'delta': (0.5, 4),
-            'theta': (4, 8),
-            'alpha': (8, 13),
-            'beta': (13, 30),
-            'gamma': (30, 40)
+            "delta": (0.5, 4),
+            "theta": (4, 8),
+            "alpha": (8, 13),
+            "beta": (13, 30),
+            "gamma": (30, 40)
         }
 
     def __init__(self, data_folder, file_path):
@@ -88,7 +88,7 @@ class EEGProcessor:
             method="welch",
             fmin=0.5,
             fmax=40)
-        self.ch_names = self.psd.info['ch_names']  # Get channel names
+        self.ch_names = self.psd.info["ch_names"]  # Get channel names
 
         # Convert PSD to numpy arrays with .get_data()
         # psds.shape: (n_epochs, n_channels, n_freqs)

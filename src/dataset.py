@@ -32,12 +32,17 @@ class EEGDataset(Dataset):
 
 
 if __name__ == "__main__":
-    label_path = "data/participants.tsv"
-    label_map = {"A": 0, "F": 1, "C": 2}
-    band = "alpha"
+    LABEL_PATH = "data/participants.tsv"
+    AD_FTD_CN = {"A": 0, "F": 1, "C": 2}
+    AD_CN = {"A": 1, "C": 0}
+    FTD_CN = {"F": 1, "C": 0}
+    AD_FTD = {"A": 1, "F": 0}
+    label_map = AD_CN
+    BAND = "alpha"
     X_all, y_all, subjects_all = load_features(
-        label_path, label_map, band=band
+        label_map, band=BAND
     )
     dataset = EEGDataset(X_all, y_all, subjects_all)
     print("Dataset size:", len(dataset))
     print("feature shape:", dataset.features.shape)
+    print("number of unique subjects:", len(set(dataset.subjects)))
