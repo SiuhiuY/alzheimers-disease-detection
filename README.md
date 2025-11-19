@@ -1,67 +1,57 @@
-# Master Thesis - Data Science & Society 
+# Master Thesis - Data Science & Society
 
 ## Project Title
 Alzheimer's Disease Detection Using EEG Topographic Images
 
-
-
 ---
 
 ## Project Overview
-
-
-
-
+The project explores feature representation in deep learning with EEG data, comparing 1D raw signal features with topographic image-like 2D features. Both features 
 
 ## Repository Structure
 ```
 THESIS_CODES/
 │
 ├── data/
-│   ├── derivatives/
-│   ├── features/
-│   ├── raw/
-│   ├── dataset_description.json
-│   ├── participants.json
-│   ├── participants.tsv
-│   └── CHANGES
+│   ├── derivatives/                     # Preprocessed EEG signals directory
+│   ├── features/                        # 2D image features directory
+│   ├── raw/                             # Unprocessed EEG signals directory
+│   ├── CHANGES
+│   ├── dataset_description.json           
+│   ├── participants.json                # Meta data mapping dictionary
+│   ├── participants.tsv                 # Meta data by each subject
+│   └── README                           # Dataset description
 │
 ├── jobs/
-│   └── eeg_prep_gpu.sh
+│   └── eeg_prep_gpu.sh                  # GPU job submission scripts
 │
-├── notebooks/
-│   ├── Tutorials/
-│   ├── eda.ipynb
-│   ├── experiment.ipynb
-│   ├── image.ipynb
-│   └── saved_epo.fif
+├── notebooks/                  
+│   ├── eda.ipynb                        # Explore EEG signals with MNE library
+│   ├── image.ipynb                      # Present the image feature
+│   └── results.ipynb                    # Post-training analysis
 │
 ├── src/
-│   ├── models/
-│   │   ├── AlexNet.py
-│   │   ├── CNN.py
-│   │   ├── EEGNet.py
-│   │   ├── ResNet.py
-│   │   └── VGG.py
-│   │
-│   ├── dataset.py
-│   ├── eeg_processor.py
-│   ├── feature_loader.py
-│   ├── model_trainer.py
-│   ├── model_tuner.py
-│   ├── subject_processor.py
-│   ├── util.py
+│   ├── models/                          # Model files directory
+│   ├── dataset.py                       # Custom PyTorch dataset generator 
+│   ├── eeg_processor.py                 # Transform signals into images for a single subject
+│   ├── feature_loader.py                # Load image feature and synchronise with labels
+│   ├── model_trainer.py                 # Train, evaluate and predict
+│   ├── model_tuner.py                   # Hyperparameter tuning
+│   ├── subject_processor.py             # Image transformation for all subjects
+│   ├── util.py                          # Helper functions
 │   └── __init__.py
 │
 ├── tests/
-│   ├── test_subject.py
+│   ├── test_processor.py                # Test eeg_processor.py 
+│   ├── test_subject.py                  # Test subject_processor.py
 │   └── __init__.py
 │
-├── cross_validation.py
-├── experiment.py
-├── main.py
-├── environment.gpu.yml
-├── environment.local.yml
+├── cross_validation.py                  # Nested cross validation
+├── eegnet_baseline.py                   # 1D EEG signal feature training pipeline
+├── experiment.py                        # Single train/test split for quick model behaviour check
+├── main.py                              # 2D image feature training pipeline
+├── environment.gpu.yml                  # Environment setting for GPU
+├── environment.local.yml                # Environment setting for CPU 
 ├── .gitignore
 ├── .gitlab-ci.yml
 ├── README.md
@@ -71,20 +61,27 @@ THESIS_CODES/
 
 ## Dataset
 
+https://openneuro.org/datasets/ds004504/versions/1.0.7
 
 ## Usage
 
 ### Dataset Download 
-Download the dataset at http:// 
+Download the dataset at https://openneuro.org/datasets/ds004504/versions/1.0.7/download
 
 By choosing your root directory, the dataset will automatically be saved in a "data" folder.
 
 ### Image Extraction 
-To extract images from the EEG signals: amend the configurations, including band name and the window size, in subject_processor.py and run the command
+To extract images from the EEG signals, run 
 ```
 python -m src.subject_processor
 ```
-The images will be saved in a folder which corresponds to the band name of your choice. 
+The default configurations, including frequency band and the sliding window size, can be adjusted by changing the arguments when calling the methods.
+```
+processor.choose_band(band_name="alpha")
+processor.choose_window_size(window_size=4)
+```
+
+The images will be saved under a folder name which which corresponds to the band name of your choice in ```/data/features/```. 
 
 By implementing the above two steps, your data repository will be arranged as below: 
 
@@ -103,7 +100,8 @@ By implementing the above two steps, your data repository will be arranged as be
 │   │
 │   ├── features/
 │   │   ├── alpha/
-│   │   └── delta/
+│   │   │       └── sub-001_alpha_psd.npy
+│   │   └── ...
 │   │
 │   ├── raw/
 │   │   ├── sub-001/
@@ -118,13 +116,14 @@ By implementing the above two steps, your data repository will be arranged as be
 │   │   ├── sub-087/
 │   │   └── sub-088/
 │   │
+│   ├── CHANGES
 │   ├── dataset_description.json
 │   ├── participants.json
 │   ├── participants.tsv
 │   └── CHANGES
 ```
 
-To test for image extraction steps in eeg_processor.py and subject_processor.py
+To test for image extraction steps in eeg_processor.py and subject_processor.py, run
 ```
 pytest -v
 ```
