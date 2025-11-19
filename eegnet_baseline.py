@@ -12,20 +12,23 @@ For each outer fold of Leave-One-Subject-Out (LOSO) CV:
             Inner K-Fold CV:
                 For each inner fold:
                     Split train and validation sets
-                    - Train model with hyperparameter c
+                    - Train model with hyperparameter c on training set
                     - Evaluate on validation set
                     - Collect validation accuracy
-                Calculate average validation accuracy
-                for c across all inner folds
+                Calculate average validation accuracy for c
+                across all inner folds
 
         Select best hyperparameter c* (highest average validation accuracy)
 
     3. Evaluate on outer test set:
         - Train model with best hyperparameter c* on entire train/val set
-        - Evaluate model with on test set subject
-        - Collect test metrics:
+        - Evaluate model with on test set subject based on metrics:
           accuracy, precision, recall, f1_score, auc, confusion_matrix
-        - Store best hyperparameter c* and test metrics for this outer fold
+        - Store results for this outer fold:
+          best model with its weights
+          best hyperparameter configuration c*
+          test metrics
+          predictions and ground truth labels
 
 Average test results across all outer folds:
     - Average test performance (mean ± std)
@@ -35,7 +38,7 @@ Implementation structure
 ------------------------
 objective(): trains and evaluates model on a single fold
 objective_cv(): runs all inner folds for one hyperparameter configuration
-main execution: runs all outer folds for each outer fold, calls objective_cv()
+main execution: runs all outer folds, calls objective_cv()
 
 Metrics stored
 --------------
@@ -46,9 +49,12 @@ Outer CV:
     - Test accuracy, precision, recall, f1_score, auc, confusion_matrix
       for each outer fold
     - Best hyperparameters for each outer fold
+    - Best model with its weights for each outer fold
+    - Predictions and ground truth labels for each outer fold test subject
 
 Overall:
     - Mean and std of all test metrics across outer folds
+    - Aggregated confusion matrix and ROC curve across all test subjects
 """
 
 import os
@@ -396,6 +402,7 @@ def objective(params, X_train, y_train,
                         callbacks=[
                             early_stopping,
                             reduce_lr,
+                            # monitor learning curve by epoch using WandB
                             WandbMetricsLogger(log_freq=1)
                             ],
                         verbose=1)
@@ -459,7 +466,7 @@ def objective_cv(trial, outer_fold, inner_cv, X_train_val, y_train_val,
     fold_scores = []
     epochs_lst = []
 
-    # Initialise wandb logging for monitoring learning process
+    # Initialise wandb logging for real-time monitoring of learning process
     config = params
     config["trial.number"] = trial.number
     wandb.init(
@@ -506,7 +513,7 @@ def objective_cv(trial, outer_fold, inner_cv, X_train_val, y_train_val,
             raise optuna.TrialPruned()
 
         # Log validation accuracy to WandB
-        wandb.log({"inner_fold_val_accuracy": val_acc}, step=inner_fold)
+        wandb.log({"inner_fold_val_accuracy": val_acc})
 
         # Clear session
         K.clear_session()
@@ -653,10 +660,10 @@ if __name__ == "__main__":
         model_filepath = os.path.join(
             result_dir, f"best_model_outer_fold_{outer_fold+1}.keras"
             )
-        new_model.save_weights(model_filepath)
+        new_model.save(model_filepath)
 
         # Reload the best model weights
-        new_model.load_weights(model_filepath)
+        new_model = tf.keras.models.load_model(model_filepath)
 
         # Evaluate the best configuration on the test set for this outer fold
         test_metrics = calculate_metrics(new_model, X_test, y_test)
