@@ -1,4 +1,5 @@
 import torch
+import torchvision.transforms as T
 from torch.utils.data import DataLoader
 from src.feature_loader import load_features
 from src.dataset import EEGDataset
@@ -26,6 +27,13 @@ RANDOM_SEED = 123
 BATCH_SIZE = 64
 NUM_EPOCHS = 50
 LEARNING_RATE = 0.001
+CRITERION = torch.nn.BCEWithLogitsLoss()  # combines a Sigmoid layer and the BCELoss in one single class
+OPTIMIZER = torch.optim.Adam
+train_transform = T.Compose([
+    T.RandomHorizontalFlip(),
+    T.RandomVerticalFlip(),
+    T.RandomRotation(45)
+])
 
 
 def run_model(
@@ -42,12 +50,10 @@ def run_model(
         label_map, band=BAND
     )
 
-    # Create dataset
-    full_dataset = EEGDataset(features, labels, subjects)
+    all_metrics = []
 
-    # Nested Cross-Validation setup
+    # Outer loop for model evaluation
     outer_cv = CrossValidator(
-        full_dataset=full_dataset,
         features=features,
         labels=labels,
         subjects=subjects,
@@ -57,55 +63,89 @@ def run_model(
         random_state=seed
     )
 
-    all_metrics = []
-
-    # Outer loop for model evaluation
-    for fold, (train_subset, test_subset) in outer_cv.outer_loop():
-        print(f"Starting Fold {fold + 1} of {outer_cv.n_splits}")
-
-        # Create DataLoaders for training and testing
-        train_loader = DataLoader(
-            train_subset, batch_size=BATCH_SIZE, shuffle=True
+    for outer_fold, train_val_idx, test_idx in outer_cv.cv_loop():
+        print(f"Starting Fold {outer_fold + 1} of {outer_cv.n_splits}")
+        # Create DataLoaders for train/val and test sets
+        # train_val_set = EEGDataset(
+        #     features[train_val_idx],
+        #     labels[train_val_idx],
+        #     subjects[train_val_idx]
+        # )
+        test_set = EEGDataset(
+            features[test_idx],
+            labels[test_idx],
+            subjects[test_idx],
+            transform=None
         )
+
+        # train_val_loader = DataLoader(
+        #     train_val_set,
+        #     batch_size=BATCH_SIZE,
+        #     shuffle=True  # shuffle for more diverse batches
+        # )
         test_loader = DataLoader(
-            test_subset, batch_size=BATCH_SIZE, shuffle=False
+            test_set,
+            batch_size=BATCH_SIZE,
+            shuffle=False  # no need to shuffle for evaluation
         )
 
-        # Inner loop to split training data into training and validation sets
-
-        # Retrieve indices from the training set for inner CV
-        train_indices = train_subset.indices
-
-        # Extract features, labels, and subjects for the training subset
-        train_features = features[train_indices]
-        train_labels = labels[train_indices]
-        train_subjects = subjects[train_indices]
-
-        # Initialise inner cross-validator
+        # Inner loop to split train/val data into training and validation sets
+        # Retrieve indices from the train/val set for inner CV
         inner_cv = CrossValidator(
-            full_dataset=train_subset,
-            features=train_features,
-            labels=train_labels,
-            subjects=train_subjects,
+            features=features[train_val_idx],
+            labels=labels[train_val_idx],
+            subjects=subjects[train_val_idx],
             cv_strategy=inner_cv_strategy,
-            n_splits=n_splits
+            n_splits=n_splits,
+            shuffle=True,
+            random_state=seed
         )
-        for i, (train_idx, val_idx) in enumerate(inner_cv.inner_loop()):
-            print(f"  Inner Fold {i + 1} of {inner_cv.n_splits}")
-            train_loader = DataLoader(
-                train_subset[train_idx], batch_size=BATCH_SIZE, shuffle=True
+
+        for inner_fold, train_idx, val_idx in inner_cv.cv_loop():
+            print(f"  Inner Fold {inner_fold + 1} of {inner_cv.n_splits}")
+            train_set = EEGDataset(
+                features[train_idx],
+                labels[train_idx],
+                subjects[train_idx],
+                transform=train_transform  # data augmentation for training set
             )
+            train_loader = DataLoader(
+                train_set,
+                batch_size=BATCH_SIZE,
+                shuffle=True
+            )
+            val_set = EEGDataset(
+                features[val_idx],
+                labels[val_idx],
+                subjects[val_idx],
+                transform=None
+            )
+
             val_loader = DataLoader(
-                train_subset[val_idx], batch_size=BATCH_SIZE, shuffle=False
+                val_set,
+                batch_size=BATCH_SIZE,
+                shuffle=False
             )
 
             # Initialise model
             model = model_name().to(DEVICE)
 
+            trainer = ModelTrainer(
+                model, train_loader, val_loader,
+                OPTIMIZER(model.parameters(), lr=LEARNING_RATE),
+                CRITERION, DEVICE
+            )
+
+            # Training model
+            trainer.fit(NUM_EPOCHS)
+
+        # Evaluate on the held-out test set
+        test_loss, test_acc = trainer.evaluate_one_epoch()
+
 
 if __name__ == "__main__":
     run_model(
-        CNNModel,
+        CNNModel(4, 2),
         n_splits=5,
         outer_cv_strategy='loso',
         inner_cv_strategy='sgkf',

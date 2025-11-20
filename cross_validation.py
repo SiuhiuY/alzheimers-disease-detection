@@ -10,7 +10,7 @@ class CrossValidator:
     """
 
     def __init__(
-        self, full_dataset, features, labels, subjects, cv_strategy,
+        self, features, labels, subjects, cv_strategy,
         n_splits=10, shuffle=False, random_state=None
     ):
         """Initialize the CrossValidator.
@@ -26,7 +26,7 @@ class CrossValidator:
                 (only for Stratified Group K-Fold).
             random_state (int, optional): Random seed for shuffling.
         """
-        self.data = full_dataset
+        # self.data = full_dataset
         self.features = features
         self.labels = labels
         self.subjects = subjects
@@ -56,9 +56,8 @@ class CrossValidator:
                 f"Choose 'loso' or 'sgkf'."
             )
 
-    def inner_loop(self):
-        """Generate train-test indices at each fold for hyperparameter
-        tuning."""
+    def cv_loop(self):
+        """Generate data split indices at each fold."""
         for i, (train_idx, test_idx) in enumerate(
             self.splitter.split(
                 self.features, self.labels, self.subjects)):
@@ -66,21 +65,21 @@ class CrossValidator:
                    set(np.unique(self.subjects[test_idx]))) != 0:
                 raise ValueError(
                     f"Subjects overlap between train and test sets in "
-                    f"inner fold {i}."
+                    f"cv fold {i}."
                 )
             yield i, train_idx, test_idx  # yield one fold at a time
 
-    def outer_loop(self):
-        """Generate train-test subsets at each fold for model evaluation."""
-        for i, (train_idx, test_idx) in enumerate(
-            self.splitter.split(
-                self.features, self.labels, self.subjects)):
-            if len(set(np.unique(self.subjects[train_idx])) &
-                   set(np.unique(self.subjects[test_idx]))) != 0:
-                raise ValueError(
-                    f"Subjects overlap between train and test sets in "
-                    f"outer fold {i}."
-                )
-            train_set = Subset(self.data, train_idx)
-            test_set = Subset(self.data, test_idx)
-            yield i, train_set, test_set
+    # def outer_loop(self):
+    #     """Generate train-test subsets at each fold for model evaluation."""
+    #     for i, (train_idx, test_idx) in enumerate(
+    #         self.splitter.split(
+    #             self.features, self.labels, self.subjects)):
+    #         if len(set(np.unique(self.subjects[train_idx])) &
+    #                set(np.unique(self.subjects[test_idx]))) != 0:
+    #             raise ValueError(
+    #                 f"Subjects overlap between train and test sets in "
+    #                 f"outer fold {i}."
+    #             )
+    #         # train_set = Subset(self.data, train_idx)
+    #         # test_set = Subset(self.data, test_idx)
+    #         yield i, train_idx, test_idx

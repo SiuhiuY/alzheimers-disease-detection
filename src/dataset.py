@@ -6,7 +6,7 @@ import torch
 class EEGDataset(Dataset):
     """Custom Dataset for EEG data."""
 
-    def __init__(self, features, labels, subjects):
+    def __init__(self, features, labels, subjects, transform=None):
         """Initialize the EEGDataset with data and labels.
 
         Args:
@@ -18,6 +18,7 @@ class EEGDataset(Dataset):
         self.features = features
         self.labels = labels
         self.subjects = subjects
+        self.transform = transform
 
     def __len__(self):
         """Return the total number of windows in the dataset."""
@@ -28,6 +29,9 @@ class EEGDataset(Dataset):
         features = torch.tensor(self.features[idx], dtype=torch.float32)
         labels = torch.tensor(self.labels[idx], dtype=torch.long)
         subjects = self.subjects[idx]
+        if self.transform is not None:
+            # Apply data augmentation here
+            features = self.transform(features)
         return features, labels, subjects
 
 
