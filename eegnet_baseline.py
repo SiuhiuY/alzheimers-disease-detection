@@ -394,11 +394,11 @@ def objective(params, X_train, y_train,
                         epochs=20,
                         class_weight=calculate_class_weights(y_train),
                         callbacks=[
+                            # WandbMetricsLogger(log_freq=1)  # Optional WandB logging
                             early_stopping,
-                            reduce_lr,
-                            WandbMetricsLogger(log_freq=1)
+                            reduce_lr
                             ],
-                        verbose=1)
+                        verbose=0)
 
     # Evaluate on validation set
     val_loss, val_accuracy = model.evaluate(X_val, y_val, verbose=0)
@@ -448,8 +448,8 @@ def objective_cv(trial, outer_fold, inner_cv, X_train_val, y_train_val,
         "dropoutType": trial.suggest_categorical(
             "dropoutType", ["Dropout", "SpatialDropout2D"]
         ),
-        "learning_rate": trial.suggest_categorical(
-            "learning_rate", [1e-3, 3e-4, 1e-4]),
+        "learning_rate": trial.suggest_float(
+            "learning_rate", 1e-5, 1e-3, log=True),
         "optimizer": trial.suggest_categorical(
             "optimizer", ["adam", "adamw", "rmsprop"]),
         "batch_size": trial.suggest_categorical("batch_size", [16, 32, 64])
@@ -570,7 +570,7 @@ if __name__ == "__main__":
     # Initialise cross validation
     outer_cv = LeaveOneGroupOut()
     inner_cv = StratifiedGroupKFold(
-        n_splits=5, shuffle=True, random_state=RANDOM_SEED
+        n_splits=10, shuffle=True, random_state=RANDOM_SEED
         )
 
     # Initialise a dictionary to store overall results
