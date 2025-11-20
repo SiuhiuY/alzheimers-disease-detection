@@ -27,7 +27,7 @@ RANDOM_SEED = 123
 BATCH_SIZE = 64
 NUM_EPOCHS = 50
 LEARNING_RATE = 0.001
-CRITERION = torch.nn.BCEWithLogitsLoss()  # combines a Sigmoid layer and the BCELoss in one single class
+CRITERION = torch.nn.BCELoss()
 OPTIMIZER = torch.optim.Adam
 train_transform = T.Compose([
     T.RandomHorizontalFlip(),
@@ -65,29 +65,6 @@ def run_model(
 
     for outer_fold, train_val_idx, test_idx in outer_cv.cv_loop():
         print(f"Starting Fold {outer_fold + 1} of {outer_cv.n_splits}")
-        # Create DataLoaders for train/val and test sets
-        # train_val_set = EEGDataset(
-        #     features[train_val_idx],
-        #     labels[train_val_idx],
-        #     subjects[train_val_idx]
-        # )
-        test_set = EEGDataset(
-            features[test_idx],
-            labels[test_idx],
-            subjects[test_idx],
-            transform=None
-        )
-
-        # train_val_loader = DataLoader(
-        #     train_val_set,
-        #     batch_size=BATCH_SIZE,
-        #     shuffle=True  # shuffle for more diverse batches
-        # )
-        test_loader = DataLoader(
-            test_set,
-            batch_size=BATCH_SIZE,
-            shuffle=False  # no need to shuffle for evaluation
-        )
 
         # Inner loop to split train/val data into training and validation sets
         # Retrieve indices from the train/val set for inner CV
@@ -128,24 +105,55 @@ def run_model(
             )
 
             # Initialise model
-            model = model_name().to(DEVICE)
+            model = model_name.to(DEVICE)
 
             trainer = ModelTrainer(
                 model, train_loader, val_loader,
                 OPTIMIZER(model.parameters(), lr=LEARNING_RATE),
-                CRITERION, DEVICE
+                CRITERION, DEVICE, threshold=0.5
             )
 
             # Training model
-            trainer.fit(NUM_EPOCHS)
+            history = trainer.fit(NUM_EPOCHS)
+
 
         # Evaluate on the held-out test set
-        test_loss, test_acc = trainer.evaluate_one_epoch()
+        train_val_set = EEGDataset(
+            features[train_val_idx],
+            labels[train_val_idx],
+            subjects[train_val_idx],
+            transform=train_transform
+        )
+        train_val_loader = DataLoader(
+            train_val_set,
+            batch_size=BATCH_SIZE,
+            shuffle=True
+        )
+        test_set = EEGDataset(
+            features[test_idx],
+            labels[test_idx],
+            subjects[test_idx],
+            transform=None
+        )
+        test_loader = DataLoader(
+            test_set,
+            batch_size=BATCH_SIZE,
+            shuffle=False
+        )
+        model = model_name.to(DEVICE)
+        trainer = ModelTrainer(model, train_val_loader, test_loader,
+                               OPTIMIZER(model.parameters(), lr=LEARNING_RATE),
+                               CRITERION, DEVICE, threshold=0.5)
+
+        # Train on the entire train/val set
+        # trainer.fit(NUM_EPOCHS)
+        # # Evaluate on the test set
+        # metrics = trainer.evaluate()
 
 
 if __name__ == "__main__":
     run_model(
-        CNNModel(4, 2),
+        CNNModel(4, 1),
         n_splits=5,
         outer_cv_strategy='loso',
         inner_cv_strategy='sgkf',
