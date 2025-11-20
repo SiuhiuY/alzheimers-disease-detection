@@ -64,7 +64,7 @@ THESIS_CODES/
 ## Dataset
 Dataset is publicly available on OpenNeuro: https://openneuro.org/datasets/ds004504/versions/1.0.7. 
 
-Resting-state eyes-closed EEG recordings with 19 channels at 500Hz sampling rate. The subject groups include Alzheimer's Disease, Frontaltemporal Dimentia, and healthy controls. 
+Resting-state eyes-closed EEG recordings with 19 channels at 500Hz sampling rate. The subject groups include Alzheimer's Disease, Frontaltemporal Dementia, and healthy controls. 
 
 ## Usage
 
@@ -122,8 +122,8 @@ By implementing the above two steps, your data repository will be arranged as be
 │   ├── CHANGES
 │   ├── dataset_description.json
 │   ├── participants.json
-│   ├── participants.tsv
-│   └── CHANGES
+│   └── participants.tsv
+│   └── README
 ```
 
 To test for image extraction steps in ```eeg_processor.py``` and ```subject_processor.py```, run: 
@@ -133,13 +133,13 @@ pytest -v
 
 ### Run Experiment
 
-## 1D feature
+#### 1D feature
 1D CNN model pipeline is implemented separately because the original EEGNet architecture is written in Keras. To run signal extraction and nested cross validation:
 ```
 python eegnet_baseline.py
 ```
 
-## 2D feature
+#### 2D feature
 ```
 python main.py
 ```
