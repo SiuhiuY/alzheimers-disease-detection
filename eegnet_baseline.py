@@ -394,7 +394,7 @@ def objective(params, X_train, y_train,
                         epochs=20,
                         class_weight=calculate_class_weights(y_train),
                         callbacks=[
-                            # WandbMetricsLogger(log_freq=1)  # Optional WandB logging
+                            # WandbMetricsLogger(log_freq=1)  # Optional logging
                             early_stopping,
                             reduce_lr
                             ],
@@ -441,7 +441,7 @@ def objective_cv(trial, outer_fold, inner_cv, X_train_val, y_train_val,
     """
     # Suggest hyperparameters
     params = {
-        "F1": trial.suggest_int("F1", 4, 16),
+        "F1": trial.suggest_int("F1", 5, 15),
         "D": trial.suggest_int("D", 1, 4),
         "dropoutRate": trial.suggest_float("dropoutRate", 0.1, 0.5, step=0.1),
         "kernLength": trial.suggest_categorical("kernLength", [32, 64, 128]),
@@ -449,10 +449,10 @@ def objective_cv(trial, outer_fold, inner_cv, X_train_val, y_train_val,
             "dropoutType", ["Dropout", "SpatialDropout2D"]
         ),
         "learning_rate": trial.suggest_float(
-            "learning_rate", 1e-5, 1e-3, log=True),
+            "learning_rate", 3e-5, 5e-4, log=True),
         "optimizer": trial.suggest_categorical(
             "optimizer", ["adam", "adamw", "rmsprop"]),
-        "batch_size": trial.suggest_categorical("batch_size", [16, 32, 64])
+        "batch_size": trial.suggest_categorical("batch_size", [32, 64])
         }
 
     # Inner cross-validation
@@ -463,7 +463,7 @@ def objective_cv(trial, outer_fold, inner_cv, X_train_val, y_train_val,
     config = params
     config["trial.number"] = trial.number
     wandb.init(
-        project=f"EEGNet_Nested_CV_{'_'.join(class_names)}",
+        project=f"EEGNet_Nested_CV_{'_'.join(class_names)}_v2",
         name=f"Outer_Fold{outer_fold + 1}_Trial_{trial.number + 1}",
         config=config,
         group=f"Outer_Fold_{outer_fold + 1}",
@@ -570,7 +570,7 @@ if __name__ == "__main__":
     # Initialise cross validation
     outer_cv = LeaveOneGroupOut()
     inner_cv = StratifiedGroupKFold(
-        n_splits=10, shuffle=True, random_state=RANDOM_SEED
+        n_splits=5, shuffle=True, random_state=RANDOM_SEED
         )
 
     # Initialise a dictionary to store overall results
@@ -626,7 +626,7 @@ if __name__ == "__main__":
                 trial, outer_fold, inner_cv, X_train_val, y_train_val,
                 subjects_train_val, num_classes, chans, samples, class_names
                 ),
-            n_trials=10)
+            n_trials=7)
 
         # Retrieve the best model from the study
         best_trial = study.best_trial
