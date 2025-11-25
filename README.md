@@ -14,15 +14,7 @@ The goal is to evaluate whether representing EEG signals with explicit spatial m
 ```
 THESIS_CODES/
 │
-├── data/
-│   ├── derivatives/                     # Preprocessed EEG signals directory
-│   ├── features/                        # 2D image features directory
-│   ├── raw/                             # Unprocessed EEG signals directory
-│   ├── CHANGES
-│   ├── dataset_description.json           
-│   ├── participants.json                # Meta data mapping dictionary
-│   ├── participants.tsv                 # Meta data by each subject
-│   └── README                           # Dataset description
+├── data/                                # data folder
 │
 ├── jobs/
 │   └── eeg_prep_gpu.sh                  # GPU job submission scripts
@@ -34,7 +26,7 @@ THESIS_CODES/
 │
 ├── src/
 │   ├── models/                          # Model files directory
-│   ├── dataset.py                       # Custom PyTorch dataset generator 
+│   ├── dataset.py                       # Custom PyTorch dataset
 │   ├── eeg_processor.py                 # Transform signals into images for a single subject
 │   ├── feature_loader.py                # Load image feature and synchronise with labels
 │   ├── model_trainer.py                 # Train, evaluate and predict
@@ -90,7 +82,7 @@ By implementing the above two steps, your data repository will be arranged as be
 
 ```
 ├── data/
-│   ├── derivatives/
+│   ├── derivatives/                     # Preprocessed EEG signals directory
 │   │   ├── sub-001/
 │   │   │   └── eeg/
 │   │   │       └── sub-001_task-eyesclosed_eeg.set
@@ -101,12 +93,12 @@ By implementing the above two steps, your data repository will be arranged as be
 │   │   ├── sub-087/
 │   │   └── sub-088/
 │   │
-│   ├── features/
+│   ├── features/                       # 2D image features directory
 │   │   ├── alpha/
 │   │   │       └── sub-001_alpha_psd.npy
 │   │   └── ...
 │   │
-│   ├── raw/
+│   ├── raw/                            # Unprocessed EEG signals directory
 │   │   ├── sub-001/
 │   │   │   └── eeg/
 │   │   │       ├── sub-001_task-eyesclosed_channels.tsv
@@ -120,10 +112,10 @@ By implementing the above two steps, your data repository will be arranged as be
 │   │   └── sub-088/
 │   │
 │   ├── CHANGES
-│   ├── dataset_description.json
-│   ├── participants.json
-│   └── participants.tsv
-│   └── README
+│   ├── dataset_description.json        
+│   ├── participants.json               # Meta data mapping dictionary
+│   └── participants.tsv                # Meta data by each subject
+│   └── README                          # Dataset description
 ```
 
 To test for image extraction steps in ```eeg_processor.py``` and ```subject_processor.py```, run: 

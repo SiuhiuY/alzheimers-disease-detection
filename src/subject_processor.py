@@ -110,7 +110,7 @@ class SubjectProcessor:
             data (np.ndarray): Processed data to save.
             save_path (str): Path to save the data.
         """
-        with open(save_path, 'wb') as f:
+        with open(save_path, "wb") as f:
             np.save(f, data)
 
     def process_single_subject(self, subject_dir):

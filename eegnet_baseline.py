@@ -376,6 +376,7 @@ def objective(params, X_train, y_train,
     # Define callbacks
     early_stopping = EarlyStopping(monitor="val_loss",
                                    patience=3,
+                                   # ensures accuracy is based on the best epoch
                                    restore_best_weights=True,
                                    verbose=0)
     reduce_lr = ReduceLROnPlateau(monitor="val_loss",
@@ -394,7 +395,7 @@ def objective(params, X_train, y_train,
                         epochs=20,
                         class_weight=calculate_class_weights(y_train),
                         callbacks=[
-                            # WandbMetricsLogger(log_freq=1)  # Optional logging
+                            # WandbMetricsLogger(log_freq=1)  # Optional epoch-level logging
                             early_stopping,
                             reduce_lr
                             ],
@@ -429,7 +430,7 @@ def objective_cv(trial, outer_fold, inner_cv, X_train_val, y_train_val,
         inner_cv (StratifiedGroupKFold): Inner cross-validation splitter.
         X_train_val (np.ndarray): Training and validation features.
         y_train_val (np.ndarray): Training and validation labels.
-        subjects_train_val (np.ndarray): 
+        subjects_train_val (np.ndarray):
             Subject IDs for training/validation data.
         num_classes (int): Number of output classes.
         chans (int): Number of EEG channels.
@@ -617,7 +618,7 @@ if __name__ == "__main__":
         # to find the best configuration for this outer fold
         study = optuna.create_study(
             direction="maximize",
-            study_name=f"Outer_Fold_{outer_fold + 1}",
+            study_name=f"Outer_Fold_{outer_fold + 1}_Study",
             sampler=optuna.samplers.TPESampler(seed=RANDOM_SEED),
             pruner=optuna.pruners.MedianPruner(n_startup_trials=5))
 
@@ -661,12 +662,8 @@ if __name__ == "__main__":
         # Evaluate the best configuration on the test set for this outer fold
         test_metrics = calculate_metrics(new_model, X_test, y_test)
         print(f"Outer fold {outer_fold+1} Test Metrics:")
-        print(f"    Accuracy: {test_metrics['accuracy']}")
-        print(f"    Precision: {test_metrics['precision']}")
-        print(f"    Recall: {test_metrics['recall']}")
-        print(f"    F1 Score: {test_metrics['f1_score']}")
-        print(f"    AUC: {test_metrics['auc']}")
-        print(f"    Confusion Matrix:\n{test_metrics['confusion_matrix']}")
+        for metric_name, metric_value in test_metrics.items():
+            print(f"    {metric_name}: {metric_value}")
 
         # Store outer fold results
         fold_result = {

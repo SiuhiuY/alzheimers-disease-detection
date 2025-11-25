@@ -5,7 +5,7 @@ import os
 
 # Reference:
 # https://github.com/Bjarten/early-stopping-pytorch/blob/main/early_stopping_pytorch/early_stopping.py
-# https://github.com/souvlasvegas/EEG-DICE-net/blob/main/machine_learning/early_stopping.py 
+# https://github.com/souvlasvegas/EEG-DICE-net/blob/main/machine_learning/early_stopping.py
 
 
 class EarlyStopping:
@@ -71,6 +71,7 @@ class EarlyStopping:
 
         # Check for improvement
         elif self.best_loss - val_loss > self.min_delta:
+            # Significant improvement
             if self.verbose:
                 print(f"Epoch {epoch}: Loss improved from {self.best_loss:.6f}"
                       f" to {val_loss:.6f}.")
@@ -78,7 +79,9 @@ class EarlyStopping:
             self.best_model.load_state_dict(model.state_dict())
             self.best_epoch = epoch if epoch is not None else 0
             self.counter = 0  # reset counter
+
         else:
+            # No significant improvement
             self.counter += 1
             if self.verbose:
                 print(f"Epoch {epoch}: No improvement in loss for "
@@ -93,4 +96,5 @@ class EarlyStopping:
                     if self.verbose:
                         print("Model weights restored to best epoch.")
                 return True
+
         return False
