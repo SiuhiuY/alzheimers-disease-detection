@@ -6,12 +6,14 @@ from torchmetrics import (
 
 # Reference:
 # https://pub.towardsai.net/improve-your-model-validation-with-torchmetrics-b457d3954dcd
+# https://stackoverflow.com/questions/64002566/bcewithlogitsloss-trying-to-get-binary-output-for-predicted-label-as-a-tensor
+# https://discuss.pytorch.org/t/bceloss-vs-bcewithlogitsloss/33586/20
 
 
 class ModelTrainer:
     """Class to handle model training, validation, and testing."""
     def __init__(
-        self, model, train_loader, val_loader, test_loader,
+        self, model, train_loader, test_loader,
         optimizer, criterion, device, threshold=0.5
     ):
         """Initialise the ModelTrainer.
@@ -29,7 +31,6 @@ class ModelTrainer:
         """
         self.model = model
         self.train_loader = train_loader
-        self.val_loader = val_loader
         self.test_loader = test_loader
         self.device = device
         self.threshold = threshold
@@ -67,6 +68,7 @@ class ModelTrainer:
             self.optimizer.zero_grad()
             # Run a forward pass
             # output shape: (batch_size, num_classes)
+            # output in raw logits which matchs BCEWithLogitsLoss
             outputs = self.model(features)
             # Compute loss between predictions and true labels
             # Reshape labels from (batch_size,) to (batch_size, 1)
@@ -79,8 +81,10 @@ class ModelTrainer:
 
             # Update running loss
             running_loss += loss.item()
+            # Apply sigmoid to get predicted probabilities
+            pred_probs = torch.sigmoid(outputs)
             # Transform into predicted class labels
-            preds = (outputs >= self.threshold).float()
+            preds = (pred_probs >= self.threshold).float()
             # Update accuracy metric
             acc.update(preds, labels.view(-1, 1))
 
@@ -107,7 +111,7 @@ class ModelTrainer:
 
         # Disable gradient backpropagation for evaluation
         with torch.no_grad():
-            for features, labels, _ in self.val_loader:
+            for features, labels, _ in self.test_loader:
 
                 features = features.to(self.device)
                 labels = labels.to(self.device)
@@ -116,10 +120,11 @@ class ModelTrainer:
                 loss = self.criterion(outputs, labels.view(-1, 1))
                 running_loss += loss.item()
 
-                preds = (outputs >= self.threshold).float()
+                pred_probs = torch.sigmoid(outputs)
+                preds = (pred_probs >= self.threshold).float()
                 acc.update(preds, labels.view(-1, 1))
 
-        epoch_loss = running_loss / len(self.val_loader)
+        epoch_loss = running_loss / len(self.test_loader)
         accuracy = acc.compute()
         acc.reset()
 
@@ -170,9 +175,10 @@ class ModelTrainer:
                 labels = labels.to(self.device)
 
                 outputs = self.model(features)
-                pred_probs = outputs.cpu().numpy()
-                y_pred_probs.extend(pred_probs)
-                preds = (outputs >= self.threshold).float()
+                pred_probs = torch.sigmoid(outputs)
+                # Move to CPU to save the results
+                y_pred_probs.extend(pred_probs.cpu().numpy())
+                preds = (pred_probs >= self.threshold).float()
                 y_preds.extend(preds.cpu().numpy())
                 y_labels.extend(labels.cpu().numpy())
         return {
@@ -201,15 +207,18 @@ class ModelTrainer:
                 labels = labels.to(self.device)
 
                 outputs = self.model(features)
-                preds = (outputs >= self.threshold).float()
+                pred_probs = torch.sigmoid(outputs)
+                preds = (pred_probs >= self.threshold).float()
 
+                # Update metrics by batch
                 acc.update(preds, labels.view(-1, 1))
                 precision.update(preds, labels.view(-1, 1))
                 recall.update(preds, labels.view(-1, 1))
                 f1.update(preds, labels.view(-1, 1))
                 confusion_matrix.update(preds, labels.view(-1, 1))
-                auroc.update(outputs, labels.view(-1, 1))
+                auroc.update(pred_probs, labels.view(-1, 1))
 
+        # Compute metrics for entire test set
         test_acc = acc.compute()
         test_precision = precision.compute()
         test_recall = recall.compute()
@@ -217,6 +226,7 @@ class ModelTrainer:
         test_confusion_matrix = confusion_matrix.compute()
         test_auroc = auroc.compute()
 
+        # Reset metrics
         acc.reset()
         precision.reset()
         recall.reset()
