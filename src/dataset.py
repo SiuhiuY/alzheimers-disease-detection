@@ -6,18 +6,22 @@ import torch
 class EEGDataset(Dataset):
     """Custom Dataset for EEG data."""
 
-    def __init__(self, features, labels, subjects, transform=None):
+    def __init__(self, features, labels, subjects,
+                 is_binary=True, transform=None):
         """Initialize the EEGDataset with data and labels.
 
         Args:
             features (np.ndarray): Feature data.
             labels (np.ndarray): Corresponding class labels.
             subjects (np.ndarray): Corresponding subject IDs.
+            transform (callable, optional): Optional data augmentation to be
+                applied on features.
         """
         super().__init__()
         self.features = features
         self.labels = labels
         self.subjects = subjects
+        self.is_binary = is_binary
         self.transform = transform
 
     def __len__(self):
@@ -27,10 +31,16 @@ class EEGDataset(Dataset):
     def __getitem__(self, idx):
         """Retrieve the features, labels, and subject IDs for a given index."""
         features = torch.tensor(self.features[idx], dtype=torch.float32)
-        labels = torch.tensor(self.labels[idx], dtype=torch.long)
         subjects = self.subjects[idx]
+
+        # Handle binary and multi-class labels
+        if self.is_binary:
+            labels = torch.tensor(self.labels[idx], dtype=torch.float32)
+        else:
+            labels = torch.tensor(self.labels[idx], dtype=torch.long)
+
+        # Apply data augmentation
         if self.transform is not None:
-            # Apply data augmentation here
             features = self.transform(features)
         return features, labels, subjects
 
