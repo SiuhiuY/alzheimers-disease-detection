@@ -20,6 +20,7 @@ import src.util as util
 # https://github.com/optuna/optuna-examples/blob/main/pytorch/pytorch_simple.py
 # https://discuss.pytorch.org/t/k-fold-cross-validation-with-optuna/182229
 
+
 # Define device
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {DEVICE}")
@@ -67,13 +68,6 @@ def run_model(
     )
     print("Data loaded.")
     print("Classification task:", label_map)
-
-    # Calculate class weights
-    if use_class_weights:
-        class_weights = util.calculate_class_weights(labels).to(DEVICE)
-        CRITERION = torch.nn.BCEWithLogitsLoss(pos_weight=class_weights)
-    else:
-        CRITERION = torch.nn.BCEWithLogitsLoss()
 
     all_metrics = []
 
@@ -147,6 +141,14 @@ def run_model(
             shuffle=False
         )
         test_subject_id = subjects[test_idx]
+
+        # Calculate class weights if required
+        if use_class_weights:
+            class_weights = util.calculate_class_weights(
+                labels[train_val_idx]).to(DEVICE)
+            criterion = torch.nn.BCEWithLogitsLoss(pos_weight=class_weights)
+        else:
+            criterion = torch.nn.BCEWithLogitsLoss()
 
         study = optuna.create_study(
             direction="maximize",
