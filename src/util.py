@@ -2,8 +2,10 @@ import torch
 import os
 import numpy as np
 import random
+from torch.utils.data import DataLoader
 from sklearn.utils.class_weight import compute_class_weight
 from src.feature_loader import load_features
+from src.dataset import EEGDataset
 
 # Reference:
 # https://gist.github.com/Guitaricet/28fbb2a753b1bb888ef0b2731c03c031
@@ -90,6 +92,45 @@ def calculate_class_weights(labels):
     positive_weight = torch.tensor(positive_weight, dtype=torch.float32)
 
     return positive_weight
+
+
+def get_data_loaders(train_idx, test_idx, transform=None, batch_size=64,
+                     shuffle=True):
+    """Create DataLoaders for training and testing datasets.
+    Args:
+        train_idx (list or np.ndarray): Indices for training samples.
+        test_idx (list or np.ndarray): Indices for testing samples.
+        transform (callable, optional): Transform to apply to training data.
+        batch_size (int, optional): Batch size for DataLoaders.
+        shuffle (bool, optional): Whether to shuffle training data.
+    """
+    train_set = EEGDataset(
+        features[train_idx],
+        labels[train_idx],
+        subjects[train_idx],
+        transform=transform
+    )
+
+    train_loader = DataLoader(
+        train_set,
+        batch_size=batch_size,
+        shuffle=shuffle
+    )
+
+    test_set = EEGDataset(
+        features[test_idx],
+        labels[test_idx],
+        subjects[test_idx],
+        transform=None
+    )
+
+    test_loader = DataLoader(
+        test_set,
+        batch_size=batch_size,
+        shuffle=False
+    )
+
+    return train_loader, test_loader
 
 
 if __name__ == "__main__":
