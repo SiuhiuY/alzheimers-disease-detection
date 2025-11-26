@@ -133,6 +133,28 @@ def get_data_loaders(train_idx, test_idx, transform=None, batch_size=64,
     return train_loader, test_loader
 
 
+def get_optimizer(optimizer_name, model_parameters, learning_rate):
+    """Get the optimizer based on the given name.
+
+    Args:
+        optimizer_name (str): Name of the optimizer.
+        model_parameters (iterable): Model parameters to optimize.
+        learning_rate (float): Learning rate for the optimizer.
+
+    Returns:
+        torch.optim.Optimizer: The instantiated optimizer.
+    """
+    if optimizer_name == "Adam":
+        optimizer = torch.optim.Adam(model_parameters, lr=learning_rate)
+    elif optimizer_name == "AdamW":
+        optimizer = torch.optim.AdamW(model_parameters, lr=learning_rate)
+    elif optimizer_name == "RMSprop":
+        optimizer = torch.optim.RMSprop(model_parameters, lr=learning_rate)
+    else:
+        raise ValueError(f"Unsupported optimizer: {optimizer_name}")
+    return optimizer
+
+
 if __name__ == "__main__":
     AD_FTD_CN = {"A": 0, "F": 1, "C": 2}
     AD_CN = {"A": 0, "C": 1}
