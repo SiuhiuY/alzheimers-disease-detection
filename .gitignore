@@ -119,6 +119,9 @@ data/
 Tutorials/
 *.fif
 *.set
+notebooks/*.pdf
+notebooks/*.png
+notebooks/figures/
 
 # Logs and results
 logs/
@@ -127,4 +130,5 @@ results/
 *.out
 *.err
 wandb/
+
 
