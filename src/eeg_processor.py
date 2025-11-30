@@ -18,9 +18,9 @@ class EEGProcessor:
     VALID_BANDS = {
             "delta": (0.5, 4),
             "theta": (4, 8),
-            "alpha": (8, 13),
-            "beta": (13, 30),
-            "gamma": (30, 40)
+            "alpha": (8, 12),
+            "beta": (12, 30),
+            "gamma": (30, 45)
         }
 
     def __init__(self, data_folder, file_path):
