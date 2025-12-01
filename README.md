@@ -82,7 +82,7 @@ By implementing the above two steps, your data repository will be arranged as be
 
 ```
 ├── data/
-│   ├── derivatives/                     # Preprocessed EEG signals directory
+│   ├── derivatives/                      # Preprocessed EEG signals directory
 │   │   ├── sub-001/
 │   │   │   └── eeg/
 │   │   │       └── sub-001_task-eyesclosed_eeg.set
@@ -93,12 +93,12 @@ By implementing the above two steps, your data repository will be arranged as be
 │   │   ├── sub-087/
 │   │   └── sub-088/
 │   │
-│   ├── features/                       # 2D image features directory
+│   ├── features/                        # 2D image features directory
 │   │   ├── alpha/
 │   │   │       └── sub-001_alpha_psd.npy
 │   │   └── ...
 │   │
-│   ├── raw/                            # Unprocessed EEG signals directory
+│   ├── raw/                             # Unprocessed EEG signals directory
 │   │   ├── sub-001/
 │   │   │   └── eeg/
 │   │   │       ├── sub-001_task-eyesclosed_channels.tsv
@@ -113,9 +113,9 @@ By implementing the above two steps, your data repository will be arranged as be
 │   │
 │   ├── CHANGES
 │   ├── dataset_description.json        
-│   ├── participants.json               # Meta data mapping dictionary
-│   └── participants.tsv                # Meta data by each subject
-│   └── README                          # Dataset description
+│   ├── participants.json                # Meta data mapping dictionary
+│   └── participants.tsv                 # Meta data by each subject
+│   └── README                           # Dataset description
 ```
 
 To test for image extraction steps in ```eeg_processor.py``` and ```subject_processor.py```, run: 
