@@ -32,12 +32,12 @@ def reproducability(seed):
     os.environ["PYTHONHASHSEED"] = str(seed)
 
 
-def min_max_normalise(features, train_ind, test_ind):
+def min_max_normalise(features, train_idx, test_idx):
     """Apply Min-Max normalisation to features based on training data.
 
     Args:
         features (np.ndarray): The feature data to normalise.
-        train_ind (list or np.ndarray): Indices of training samples.
+        train_idx (list or np.ndarray): Indices of training samples.
         test_ind (list or np.ndarray): Indices of testing samples.
 
     Raises:
@@ -46,8 +46,8 @@ def min_max_normalise(features, train_ind, test_ind):
     Returns:
         tuple: Normalised (train_features, test_features).
     """
-    train_features = features[train_ind]
-    test_features = features[test_ind]
+    train_features = features[train_idx]
+    test_features = features[test_idx]
 
     # Compute min and max for pixels across all windows in training set
     train_min = train_features.min()
@@ -94,13 +94,38 @@ def calculate_class_weights(labels):
     return positive_weight
 
 
-def get_data_loaders(train_idx, test_idx, transform=None, batch_size=64,
+def get_criterion(use_class_weights, labels, device):
+    """Get the loss criterion, optionally with class weights.
+
+    Args:
+        use_class_weights (bool): Whether to use class weights.
+        labels (np.ndarray): Array of class labels.
+        device (torch.device): Device to place the weights tensor on.
+
+    Returns:
+        torch.nn.Module: The loss criterion.
+    """
+    if use_class_weights:
+        pos_weight = calculate_class_weights(labels).to(device)
+        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    else:
+        criterion = torch.nn.BCEWithLogitsLoss()
+    return criterion
+
+
+def get_data_loaders(features, labels, subjects,
+                     train_idx, test_idx,
+                     train_transform=None, batch_size=64,
                      shuffle=True):
     """Create DataLoaders for training and testing datasets.
     Args:
+        features (np.ndarray): Feature data.
+        labels (np.ndarray): Corresponding labels.
+        subjects (np.ndarray): Subject identifiers.
         train_idx (list or np.ndarray): Indices for training samples.
         test_idx (list or np.ndarray): Indices for testing samples.
-        transform (callable, optional): Transform to apply to training data.
+        train_transform (callable, optional):
+            Transform to apply to training data.
         batch_size (int, optional): Batch size for DataLoaders.
         shuffle (bool, optional): Whether to shuffle training data.
     """
@@ -108,7 +133,7 @@ def get_data_loaders(train_idx, test_idx, transform=None, batch_size=64,
         features[train_idx],
         labels[train_idx],
         subjects[train_idx],
-        transform=transform
+        transform=train_transform
     )
 
     train_loader = DataLoader(
