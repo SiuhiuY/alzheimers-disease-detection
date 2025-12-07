@@ -37,7 +37,6 @@ class EarlyStopping:
         self.min_delta = min_delta
         self.restore_best_weights = restore_best_weights
         self.verbose = verbose
-
         self.counter = 0
         self.best_loss = None
         self.best_model = None
@@ -64,8 +63,8 @@ class EarlyStopping:
         if self.best_loss is None:
             # Initialize best_loss on first epoch
             self.best_loss = val_loss
-            self.best_model = copy.deepcopy(model)
-            self.best_epoch = epoch if epoch is not None else 0
+            # state_dict: a dictionary containing model's parameters
+            self.best_model = copy.deepcopy(model.state_dict())
             if self.verbose:
                 print(f"Epoch {epoch}: Initial loss = {val_loss:.6f}")
 
@@ -76,7 +75,8 @@ class EarlyStopping:
                 print(f"Epoch {epoch}: Loss improved from {self.best_loss:.6f}"
                       f" to {val_loss:.6f}.")
             self.best_loss = val_loss
-            self.best_model.load_state_dict(model.state_dict())
+            # Overwrite with new weights
+            self.best_model = copy.deepcopy(model.state_dict())
             self.best_epoch = epoch if epoch is not None else 0
             self.counter = 0  # reset counter
 
@@ -92,7 +92,7 @@ class EarlyStopping:
                           f"Best loss: {self.best_loss:.6f} "
                           f"at epoch {self.best_epoch}.")
                 if self.restore_best_weights:
-                    model.load_state_dict(self.best_model.state_dict())
+                    model.load_state_dict(self.best_model)
                     if self.verbose:
                         print("Model weights restored to best epoch.")
                 return True

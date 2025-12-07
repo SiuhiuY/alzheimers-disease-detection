@@ -158,7 +158,8 @@ def get_data_loaders(features, labels, subjects,
     return train_loader, test_loader
 
 
-def get_optimizer(optimizer_name, model_parameters, learning_rate):
+def get_optimizer(optimizer_name, model_parameters,
+                  learning_rate, weight_decay=0.0):
     """Get the optimizer based on the given name.
 
     Args:
@@ -170,11 +171,14 @@ def get_optimizer(optimizer_name, model_parameters, learning_rate):
         torch.optim.Optimizer: The instantiated optimizer.
     """
     if optimizer_name == "Adam":
-        optimizer = torch.optim.Adam(model_parameters, lr=learning_rate)
+        optimizer = torch.optim.Adam(
+            model_parameters, lr=learning_rate, weight_decay=weight_decay)
     elif optimizer_name == "AdamW":
-        optimizer = torch.optim.AdamW(model_parameters, lr=learning_rate)
+        optimizer = torch.optim.AdamW(
+            model_parameters, lr=learning_rate, weight_decay=weight_decay)
     elif optimizer_name == "RMSprop":
-        optimizer = torch.optim.RMSprop(model_parameters, lr=learning_rate)
+        optimizer = torch.optim.RMSprop(
+            model_parameters, lr=learning_rate, weight_decay=weight_decay)
     else:
         raise ValueError(f"Unsupported optimizer: {optimizer_name}")
     return optimizer
