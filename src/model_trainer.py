@@ -128,9 +128,6 @@ class ModelTrainer:
         accuracy = acc.compute()
         acc.reset()
 
-        # set back to train mode
-        self.model.train()
-
         return epoch_loss, accuracy
 
     def fit(self, num_epochs):

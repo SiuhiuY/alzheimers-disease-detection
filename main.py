@@ -8,12 +8,13 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as T
 from torch.utils.data import DataLoader
-from wandb.integration.keras import WandbMetricsLogger
 from src.feature_loader import load_features
 from src.dataset import EEGDataset
-from src.models.CNN import CNNModel
-from cross_validation import CrossValidator
+from src.models.cnn import CNNModel
+from src.models.optuna_cnn import OptunaCNN
+from src.cross_validation import CrossValidator
 from src.model_trainer import ModelTrainer
+from src.model_tuner import Objective
 import src.util as util
 
 # References:
@@ -21,55 +22,33 @@ import src.util as util
 # https://discuss.pytorch.org/t/k-fold-cross-validation-with-optuna/182229
 
 
-# Define device
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {DEVICE}")
-
-# Define data configuration
-LABEL_PATH = "data/participants.tsv"
-AD_FTD_CN = {"A": 0, "F": 1, "C": 2}
-AD_CN = {"A": 1, "C": 0}
-FTD_CN = {"F": 1, "C": 0}
-AD_FTD = {"A": 1, "F": 0}
-label_map = AD_CN
-BAND = "alpha"
-num_classes = 1  # Binary classification
-class_names = [
-    k for k, v in sorted(label_map.items(), key=lambda item: item[1])
-]
-
-# Define training configuration
-RANDOM_SEED = 123
-BATCH_SIZE = 64
-NUM_EPOCHS = 50
-LEARNING_RATE = 0.001
-OPTIMIZER = torch.optim.Adam
-train_transform = T.Compose([
-    T.RandomHorizontalFlip(),
-    T.RandomVerticalFlip(),
-    T.RandomRotation(45)
-])
-
-
 def run_model(
-    model_name, n_splits=5, outer_cv_strategy='loso',
-    inner_cv_strategy='sgkf', use_class_weights=False,
-    seed=RANDOM_SEED
+    model_name, model_args, label_map,
+    n_splits=None, test_size=0.2, n_epochs=20, band="alpha",
+    outer_cv_strategy='loso', inner_cv_strategy=None,
+    use_class_weights=True,
+    train_transform=None,
+    seed=123
 ):
     """Run the model training and evaluation pipeline."""
 
     # Set random seeds
     util.reproducability(seed)
 
+    # Define device
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {DEVICE}")
+    class_names = [
+        k for k, v in sorted(label_map.items(), key=lambda item: item[1])
+    ]
+
     # Load data
     print("Loading features and labels...")
     features, labels, subjects = load_features(
-        label_map, band=BAND
+        label_map=label_map, band=band
     )
     print("Data loaded.")
     print("Classification task:", label_map)
-
-    all_metrics = []
 
     # Outer loop for model evaluation
     outer_cv = CrossValidator(
@@ -78,6 +57,7 @@ def run_model(
         subjects=subjects,
         cv_strategy=outer_cv_strategy,
         n_splits=n_splits,
+        test_size=test_size,
         shuffle=True,
         random_state=seed
     )
@@ -85,10 +65,10 @@ def run_model(
     # Initialise a dictitionary to store overall results
     all_results = {
         "meta_data": {
-            "model_name": model_name.__class__.__name__,
+            "model_name": model_name.__name__,
             "class_names": class_names,
             "label_map": label_map,
-            "band": BAND
+            "band": band,
         },
         "outer_folds": [],
         "subject_metadata": {}
@@ -97,191 +77,199 @@ def run_model(
     # Model checkpoint path
     result_dir = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "results", model_name.__class__.__name__, BAND, "_".join(class_names))
+        "results", model_name.__name__, band, "_".join(class_names))
     os.makedirs(result_dir, exist_ok=True)
 
     for outer_fold, train_val_idx, test_idx in outer_cv.cv_loop():
         print(f"\n--- Outer Fold {outer_fold + 1} ---")
+        print(f"Train/Val size: {len(train_val_idx)}, "
+              f"Test size: {len(test_idx)}")
+        print(f"Test subject IDs: {np.unique(subjects[test_idx])}")
 
-        # # Inner loop to split train/val data into training and validation sets
-        # # Retrieve indices from the train/val set for inner CV
-        # inner_cv = CrossValidator(
-        #     features=features[train_val_idx],
-        #     labels=labels[train_val_idx],
-        #     subjects=subjects[train_val_idx],
-        #     cv_strategy=inner_cv_strategy,
-        #     n_splits=n_splits,
-        #     shuffle=True,
-        #     random_state=seed
-        # )
-
-        # For each outer fold, split train and val dataset and initiate
-        # an Optuna hyperparameter optimisation study
-        train_val_set = EEGDataset(
-            features[train_val_idx],
-            labels[train_val_idx],
-            subjects[train_val_idx],
-            transform=train_transform
-        )
-        test_set = EEGDataset(
-            features[test_idx],
-            labels[test_idx],
-            subjects[test_idx],
-            transform=None
+        # Inner loop for hyperparameter tuning
+        inner_cv = CrossValidator(
+            features=features[train_val_idx],
+            labels=labels[train_val_idx],
+            subjects=subjects[train_val_idx],
+            cv_strategy=inner_cv_strategy,
+            n_splits=n_splits,
+            test_size=test_size,
+            shuffle=True,
+            random_state=seed
         )
 
-        train_val_loader = DataLoader(
-            train_val_set,
-            batch_size=BATCH_SIZE,
-            shuffle=True
-        )
-        test_loader = DataLoader(
-            test_set,
-            batch_size=BATCH_SIZE,
-            shuffle=False
-        )
-        test_subject_id = subjects[test_idx]
+        if inner_cv_strategy is None:
+            # Single train/val split
+            _, train_idx, val_idx = next(inner_cv.cv_loop())
 
-        # Calculate class weights if required
-        if use_class_weights:
-            class_weights = util.calculate_class_weights(
-                labels[train_val_idx]).to(DEVICE)
-            criterion = torch.nn.BCEWithLogitsLoss(pos_weight=class_weights)
+            # Define model builder function for Objective
+            def model_builder(trial):
+                return model_name(trial, *model_args)
+
+            # Create optuna study for hyperparameter tuning
+            study = optuna.create_study(
+                direction="maximize",
+                study_name=f"Outer_Fold_{outer_fold + 1}_Study",
+                sampler=optuna.samplers.TPESampler(seed=seed),
+                pruner=optuna.pruners.MedianPruner(n_startup_trials=5)
+            )
+
+            objective = Objective(
+                features[train_val_idx],
+                labels[train_val_idx],
+                subjects[train_val_idx],
+                train_idx, val_idx,
+                model_builder,
+                train_transform,
+                band, class_names, label_map,
+                outer_fold, model_name, seed,
+                DEVICE,
+                num_epochs=n_epochs,
+                use_class_weights=use_class_weights,
+            )
+
+            study.optimize(
+                lambda trial: objective(trial), n_trials=10)
+
+            # Retrieve the best model from this study
+            best_trial = study.best_trial
+            best_score = best_trial.value
+            best_params = best_trial.params
+            best_batch_size = best_params["batch_size"]
+            best_epochs = best_trial.user_attrs["best_epoch"]
+
+            criterion = util.get_criterion(
+                use_class_weights, labels[train_val_idx], DEVICE
+            )
+
+            print(f"Best trial for Outer Fold {outer_fold + 1}:")
+            print(f"  Value: {best_score}")
+            print("   Params: ")
+            for key, value in best_params.items():
+                print(f"    {key}: {value}")
+
+            # Save the best model from this study
+            best_model_state = best_trial.user_attrs["best_model_state_dict"]
+            model_filepath = os.path.join(
+                result_dir, f"best_model_{outer_fold + 1}.pt"
+            )
+            torch.save(best_model_state, model_filepath)
+
+            # Retrain the model on the entire train/val set for evaluation
+            # Split train_val and test sets
+            train_val_loader, test_loader = util.get_data_loaders(
+                features[train_val_idx],
+                labels[train_val_idx],
+                subjects[train_val_idx],
+                train_val_idx, test_idx,
+                train_transform=train_transform,
+                batch_size=best_batch_size, shuffle=True
+            )
+            test_subject_id = subjects[test_idx]
+
+            # Load the best model architecture
+            final_model = model_name(*model_args).to(DEVICE)
+            final_model.load_state_dict(best_model_state)
+
+            best_lr = best_params["learning_rate"]
+            optimizer_name = best_params["optimizer"]
+            best_optimizer = util.get_optimizer(
+                optimizer_name, final_model.parameters(),
+                best_lr, weight_decay=best_params["weight_decay"]
+            )
+
+            # Retrain the model
+            trainer = ModelTrainer(final_model, train_val_loader, test_loader,
+                                   optimizer=best_optimizer,
+                                   criterion=criterion, device=DEVICE,
+                                   threshold=0.5)
+
+            # Train on the entire train/val set
+            trainer.fit(best_epochs)
+
+            # Evaluate on the test set
+            test_metrics = trainer.calculate_metrics()
+            predictions = trainer.predict()
+
+            print(f"Test Metrics for Outer Fold {outer_fold + 1}:")
+            for metric_name, metric_value in test_metrics.items():
+                print(f"  {metric_name}: {metric_value:.4f}")
+
+            # Store outer fold results
+            fold_result = {
+                "outer_fold": outer_fold + 1,
+                "test_subject_id": test_subject_id,
+                "best_params": best_params,
+                "best_epochs": best_epochs,
+                "model_filepath": model_filepath,
+
+                "test_accuracy": test_metrics["accuracy"],
+                "test_precision": test_metrics["precision"],
+                "test_recall": test_metrics["recall"],
+                "test_f1_score": test_metrics["f1_score"],
+                "test_auc": test_metrics["auc"],
+                "test_confusion_matrix": test_metrics["confusion_matrix"].tolist(),
+
+                "true_labels": predictions["y_true"].tolist(),
+                "pred_probs": predictions["y_pred_probs"].flatten().tolist(),
+                "pred_labels": predictions["y_pred"].tolist()
+            }
+
+            all_results["outer_folds"].append(fold_result)
+
         else:
-            criterion = torch.nn.BCEWithLogitsLoss()
-
-        study = optuna.create_study(
-            direction="maximize",
-            study_name=f"Outer_Fold_{outer_fold + 1}_Study",
-            sampler=optuna.samplers.TPESampler(seed=seed),
-            pruner=optuna.pruners.MedianPruner(n_startup_trials=5)
-        )
-
-        study.optimize(
-            lambda trial: objective(
-                trial, inner_cv, features, labels,
-                subjects, model_name, train_transform
-            ),
-            n_trials=7)
-        
-        # Retrieve the best model from this study
-        best_trial = study.best_trial
-        best_score = best_trial.value
-        best_params = best_trial.params
-
-        print(f"Best trial for Outer Fold {outer_fold + 1}:")
-        print(f"  Value: {best_score}")
-        print("   Params: ")
-        for key, value in best_params.items():
-            print(f"    {key}: {value}")
-
-
-        # for inner_fold, train_idx, val_idx in inner_cv.cv_loop():
-        #     print(f"  Inner Fold {inner_fold + 1} of {inner_cv.n_splits}")
-        #     train_set = EEGDataset(
-        #         features[train_idx],
-        #         labels[train_idx],
-        #         subjects[train_idx],
-        #         is_binary=True,
-        #         transform=train_transform  # data augmentation for training set
-        #     )
-        #     train_loader = DataLoader(
-        #         train_set,
-        #         batch_size=BATCH_SIZE,
-        #         shuffle=True
-        #     )
-        #     val_set = EEGDataset(
-        #         features[val_idx],
-        #         labels[val_idx],
-        #         subjects[val_idx],
-        #         is_binary=True,
-        #         transform=None
-        #     )
-
-        #     val_loader = DataLoader(
-        #         val_set,
-        #         batch_size=BATCH_SIZE,
-        #         shuffle=False
-        #     )
-
-        #     # Initialise model
-        #     model = model_name.to(DEVICE)
-
-        #     trainer = ModelTrainer(
-        #         model, train_loader, val_loader,
-        #         OPTIMIZER(model.parameters(), lr=LEARNING_RATE),
-        #         CRITERION, DEVICE, threshold=0.5
-        #     )
-
-        #     # Training model
-        #     history = trainer.fit(NUM_EPOCHS)
-
-        # Retrain best model on the entire train/val set
-        best_lr = best_params["learning_rate"]
-        optimizer_name = best_params["optimizer"]
-        best_optimizer = util.get_optimizer(
-            optimizer_name, model_name.parameters(), best_lr
-        )
-        new_model = 
-        model = model_name.to(DEVICE)
-        trainer = ModelTrainer(model, train_val_loader, test_loader,
-                               best_optimizer(model.parameters(), lr=best_lr),
-                               CRITERION, DEVICE, threshold=0.5)
-
-        # Train on the entire train/val set
-        trainer.fit(NUM_EPOCHS)
-
-
-        # Save the best model
-        model_filepath = os.path.join(
-            result_dir, f"best_model_outer_fold_{outer_fold + 1}.pt"
-        )
-        torch.save(model.state_dict(), model_filepath)
-
-        # Reload the best model
-
-        # Evaluate on the test set
-        test_metrics = trainer.calculate_metrics(new_model, test_loader)
-
-        print(f"Test Metrics for Outer Fold {outer_fold + 1}:")
-        for metric_name, metric_value in test_metrics.items():
-            print(f"  {metric_name}: {metric_value:.4f}")
-
-        # Store outer fold results
-        fold_result = {
-            "outer_fold": outer_fold + 1,
-            "test_subject_id": test_subject_id,
-            "best_params": best_params,
-            "best_epochs": trainer.best_epoch,
-            "model_filepath": model_filepath,
-
-            "test_accuracy": test_metrics["accuracy"],
-            "test_precision": test_metrics["precision"],
-            "test_recall": test_metrics["recall"],
-            "test_f1_score": test_metrics["f1_score"],
-            "test_auc": test_metrics["auc"],
-            "test_confusion_matrix": test_metrics["confusion_matrix"].tolist(),
-
-            "true_labels": test_metrics["y_true"].tolist(),
-            "pred_probs": test_metrics["y_pred_probs"].flatten().tolist(),
-            "pred_labels": test_metrics["y_pred"].tolist()
-        }
-
-        all_results["outer_folds"].append(fold_result)
+            # Inner CV
+            pass
 
     # Save overall results
     with open(os.path.join(result_dir, "all_results.pkl"), "wb") as f:
         pickle.dump(all_results, f)
 
+    # Calculate overall statistics
+    all_accuracies = [
+        fold["test_accuracy"] for fold in all_results["outer_folds"]
+    ]
+    mean_accuracy = np.mean(all_accuracies)
+    std_accuracy = np.std(all_accuracies)
+
+    print(f"Mean Accuracy: {mean_accuracy:.4f}")
+    print(f"Standard Deviation of Accuracy: {std_accuracy:.4f}")
+
     print("Nested cross-validation completed. Results saved.")
 
 
 if __name__ == "__main__":
+
+    # Define data configuration
+    LABEL_PATH = "data/participants.tsv"
+    AD_FTD_CN = {"A": 0, "F": 1, "C": 2}
+    AD_CN = {"A": 1, "C": 0}
+    FTD_CN = {"F": 1, "C": 0}
+    AD_FTD = {"A": 1, "F": 0}
+    label_map = AD_CN
+    band = "alpha"
+    num_classes = 1  # Binary classification
+
+    # Define training configuration
+    train_transform = T.Compose([
+        T.RandomHorizontalFlip(),
+        T.RandomVerticalFlip(),
+        T.RandomRotation(45)
+    ])
+    RANDOM_SEED = 123
+    n_epochs = 20
+
+    # Run the model training
     run_model(
-        CNNModel(4, 1),
-        n_splits=5,
+        OptunaCNN, (4, 1),
+        label_map=label_map,
+        n_splits=None,
+        test_size=0.2,
+        n_epochs=n_epochs,
+        band=band,
         outer_cv_strategy='loso',
-        inner_cv_strategy='sgkf',
+        inner_cv_strategy=None,  # inner single train / val split
         use_class_weights=True,
+        train_transform=train_transform,
         seed=RANDOM_SEED
     )

@@ -1,5 +1,6 @@
 import optuna
 import numpy as np
+import copy
 import wandb
 import torch
 import torch.nn as nn
@@ -21,6 +22,8 @@ class Objective(object):
         self, features, labels, subjects,
         train_idx, val_idx,
         model_builder, train_transform,
+        band, class_names, label_map,
+        outer_fold, model_name, seed,
         device, num_epochs=20,
         use_class_weights=True
     ):
@@ -49,6 +52,12 @@ class Objective(object):
         self.device = device
         self.num_epochs = num_epochs
         self.use_class_weights = use_class_weights
+        self.band = band
+        self.class_names = class_names
+        self.label_map = label_map
+        self.outer_fold = outer_fold
+        self.model_name = model_name
+        self.seed = seed
 
     def __call__(self, trial):
         """Call method to execute the objective function.
@@ -71,6 +80,27 @@ class Objective(object):
         )
         batch_size = trial.suggest_categorical(
             "batch_size", [32, 64, 128]
+        )
+
+        # Intialise wandb for this trial
+        band_str = '_'.join(self.band)
+        classes_str = '_'.join(self.class_names)
+
+        wandb.init(
+            project=f"EEG_Classification_2D_{band_str}_{classes_str}",
+            name=f"Outer_Fold_{self.outer_fold + 1}",
+            config={
+                "model_name": self.model_name.__name__,
+                "outer_fold": self.outer_fold + 1,
+                "band": self.band,
+                "class_names": self.class_names,
+                "label_map": self.label_map,
+                "use_class_weights": self.use_class_weights,
+                "seed": self.seed
+            },
+            group=f"Outer_Fold_{self.outer_fold + 1}",
+            job_type="tuning",
+            reinit=True
         )
 
         # Create training and validation datasets
@@ -109,6 +139,7 @@ class Objective(object):
 
         # Initialise val accuracy
         best_val_acc = 0.0
+        best_model_state = None
 
         for epoch in range(self.num_epochs):
             train_loss, train_acc = trainer.train_one_epoch()
@@ -125,6 +156,7 @@ class Objective(object):
             # Update best validation accuracy
             if val_acc.item() > best_val_acc:
                 best_val_acc = val_acc.item()
+                best_model_state = copy.deepcopy(model.state_dict())
 
             # Check for early stopping
             if early_stopping(val_loss, model, epoch):
@@ -146,6 +178,7 @@ class Objective(object):
         # Store the best accuracy and best epoch
         trial.set_user_attr("best_val_acc", best_val_acc)
         trial.set_user_attr("best_epoch", early_stopping.best_epoch)
+        trial.set_user_attr("best_model_state_dict", best_model_state)
 
         print(f"Best Validation Accuracy: {best_val_acc:.4f} "
               f"at Epoch {early_stopping.best_epoch}")
