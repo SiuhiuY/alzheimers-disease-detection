@@ -1,5 +1,6 @@
 import optuna
 import numpy as np
+import wandb
 import torch
 import torch.nn as nn
 import src.util as util
@@ -113,6 +114,14 @@ class Objective(object):
             train_loss, train_acc = trainer.train_one_epoch()
             val_loss, val_acc = trainer.evaluate_one_epoch()
 
+            # Log training and validation metrics to wandb
+            wandb.log({
+                "train_loss": train_loss,
+                "train_accuracy": train_acc,
+                "val_loss": val_loss,
+                "val_accuracy": val_acc
+            }, step=epoch)
+
             # Update best validation accuracy
             if val_acc.item() > best_val_acc:
                 best_val_acc = val_acc.item()
@@ -124,10 +133,21 @@ class Objective(object):
             # Monitor val_acc for pruning
             trial.report(val_acc.item(), epoch)
             if trial.should_prune():
+                wandb.run.summary["state"] = "pruned"
+                wandb.finish(quiet=True)
                 raise optuna.TrialPruned()
+
+        # Log best accuracy and best epoch to wandb
+        wandb.run.summary["best_val_accuracy"] = best_val_acc
+        wandb.run.summary["best_epoch"] = early_stopping.best_epoch
+        wandb.run.summary["state"] = "completed"
+        wandb.finish()
 
         # Store the best accuracy and best epoch
         trial.set_user_attr("best_val_acc", best_val_acc)
         trial.set_user_attr("best_epoch", early_stopping.best_epoch)
+
+        print(f"Best Validation Accuracy: {best_val_acc:.4f} "
+              f"at Epoch {early_stopping.best_epoch}")
 
         return best_val_acc
