@@ -32,7 +32,7 @@ def reproducability(seed):
     os.environ["PYTHONHASHSEED"] = str(seed)
 
 
-def min_max_normalise(features, train_idx, test_idx):
+def min_max_normalise(features, train_indices, test_indices):
     """Apply Min-Max normalisation to features based on training data.
 
     Args:
@@ -46,8 +46,8 @@ def min_max_normalise(features, train_idx, test_idx):
     Returns:
         tuple: Normalised (train_features, test_features).
     """
-    train_features = features[train_idx]
-    test_features = features[test_idx]
+    train_features = features[train_indices]
+    test_features = features[test_indices]
 
     # Compute min and max for pixels across all windows in training set
     train_min = train_features.min()
@@ -114,7 +114,7 @@ def get_criterion(use_class_weights, labels, device):
 
 
 def get_data_loaders(features, labels, subjects,
-                     train_idx, test_idx,
+                     train_indices, test_indices,
                      train_transform=None, batch_size=64,
                      shuffle=True):
     """Create DataLoaders for training and testing datasets.
@@ -129,10 +129,15 @@ def get_data_loaders(features, labels, subjects,
         batch_size (int, optional): Batch size for DataLoaders.
         shuffle (bool, optional): Whether to shuffle training data.
     """
+
+    # Apply min_max normalisation
+    train_features, test_features = min_max_normalise(
+        features, train_indices, test_indices
+    )
     train_set = EEGDataset(
-        features[train_idx],
-        labels[train_idx],
-        subjects[train_idx],
+        train_features,
+        labels[train_indices],
+        subjects[train_indices],
         transform=train_transform
     )
 
@@ -143,9 +148,9 @@ def get_data_loaders(features, labels, subjects,
     )
 
     test_set = EEGDataset(
-        features[test_idx],
-        labels[test_idx],
-        subjects[test_idx],
+        test_features,
+        labels[test_indices],
+        subjects[test_indices],
         transform=None
     )
 

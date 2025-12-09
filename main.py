@@ -10,7 +10,6 @@ import torchvision.transforms as T
 from torch.utils.data import DataLoader
 from src.feature_loader import load_features
 from src.dataset import EEGDataset
-from src.models.cnn import CNNModel
 from src.models.optuna_cnn import OptunaCNN
 from src.cross_validation import CrossValidator
 from src.model_trainer import ModelTrainer
@@ -23,7 +22,7 @@ import src.util as util
 
 
 def run_model(
-    model_name, model_args, label_map,
+    model_name, label_map,
     n_splits=None, test_size=0.2, n_epochs=20, band="alpha",
     outer_cv_strategy='loso', inner_cv_strategy=None,
     use_class_weights=True,
@@ -104,7 +103,12 @@ def run_model(
 
             # Define model builder function for Objective
             def model_builder(trial):
-                return model_name(trial, *model_args)
+                C = features.shape[1]
+                H = features.shape[2]
+                W = features.shape[3]
+                input_shape = (C, H, W)
+
+                return model_name(trial, input_shape=input_shape, num_classes=1)
 
             # Create optuna study for hyperparameter tuning
             study = optuna.create_study(
@@ -158,9 +162,9 @@ def run_model(
             # Retrain the model on the entire train/val set for evaluation
             # Split train_val and test sets
             train_val_loader, test_loader = util.get_data_loaders(
-                features[train_val_idx],
-                labels[train_val_idx],
-                subjects[train_val_idx],
+                features,
+                labels,
+                subjects,
                 train_val_idx, test_idx,
                 train_transform=train_transform,
                 batch_size=best_batch_size, shuffle=True
@@ -168,7 +172,7 @@ def run_model(
             test_subject_id = subjects[test_idx]
 
             # Load the best model architecture
-            final_model = model_name(*model_args).to(DEVICE)
+            final_model = model_builder(best_trial).to(DEVICE)
             final_model.load_state_dict(best_model_state)
 
             best_lr = best_params["learning_rate"]
@@ -198,6 +202,7 @@ def run_model(
             # Store outer fold results
             fold_result = {
                 "outer_fold": outer_fold + 1,
+                "best_trial_number": best_trial.number,
                 "test_subject_id": test_subject_id,
                 "best_params": best_params,
                 "best_epochs": best_epochs,
@@ -210,7 +215,7 @@ def run_model(
                 "test_auc": test_metrics["auc"],
                 "test_confusion_matrix": test_metrics["confusion_matrix"].tolist(),
 
-                "true_labels": predictions["y_true"].tolist(),
+                "true_labels": predictions["y_true"],
                 "pred_probs": predictions["y_pred_probs"].flatten().tolist(),
                 "pred_labels": predictions["y_pred"].tolist()
             }
@@ -261,7 +266,7 @@ if __name__ == "__main__":
 
     # Run the model training
     run_model(
-        OptunaCNN, (4, 1),
+        OptunaCNN,
         label_map=label_map,
         n_splits=None,
         test_size=0.2,

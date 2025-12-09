@@ -83,21 +83,14 @@ class Objective(object):
         )
 
         # Intialise wandb for this trial
-        band_str = '_'.join(self.band)
+        config = trial.params
+        config["trial_number"] = trial.number
         classes_str = '_'.join(self.class_names)
 
         wandb.init(
-            project=f"EEG_Classification_2D_{band_str}_{classes_str}",
-            name=f"Outer_Fold_{self.outer_fold + 1}",
-            config={
-                "model_name": self.model_name.__name__,
-                "outer_fold": self.outer_fold + 1,
-                "band": self.band,
-                "class_names": self.class_names,
-                "label_map": self.label_map,
-                "use_class_weights": self.use_class_weights,
-                "seed": self.seed
-            },
+            project=f"EEG_Classification_2D_{self.band}_{classes_str}",
+            name=f"Outer_Fold_{self.outer_fold + 1}_Trial_{trial.number+1}",
+            config=config,
             group=f"Outer_Fold_{self.outer_fold + 1}",
             job_type="tuning",
             reinit=True
