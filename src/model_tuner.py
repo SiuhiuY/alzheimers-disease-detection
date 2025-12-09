@@ -82,6 +82,9 @@ class Objective(object):
             "batch_size", [32, 64, 128]
         )
 
+        # Build model
+        model = self.model_builder(trial).to(self.device)
+
         # Intialise wandb for this trial
         config = trial.params
         config["trial_number"] = trial.number
@@ -104,9 +107,6 @@ class Objective(object):
             batch_size=batch_size,
             shuffle=True
         )
-
-        # Build model
-        model = self.model_builder(trial).to(self.device)
 
         # Set up loss function
         criterion = util.get_criterion(
