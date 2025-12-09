@@ -212,8 +212,6 @@ def run_model(
                 "test_precision": test_metrics["precision"],
                 "test_recall": test_metrics["recall"],
                 "test_f1_score": test_metrics["f1_score"],
-                "test_auc": test_metrics["auc"],
-                "test_confusion_matrix": test_metrics["confusion_matrix"].tolist(),
 
                 "true_labels": predictions["y_true"],
                 "pred_probs": predictions["y_pred_probs"].flatten().tolist(),

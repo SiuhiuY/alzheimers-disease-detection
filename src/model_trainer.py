@@ -196,8 +196,7 @@ class ModelTrainer:
         precision = self.precision
         recall = self.recall
         f1 = self.f1_score
-        auroc = self.auroc
-        confusion_matrix = self.confusion_matrix
+
         with torch.no_grad():
             for features, labels, _ in self.test_loader:
                 features = features.to(self.device)
@@ -212,30 +211,22 @@ class ModelTrainer:
                 precision.update(preds, labels.view(-1, 1))
                 recall.update(preds, labels.view(-1, 1))
                 f1.update(preds, labels.view(-1, 1))
-                confusion_matrix.update(preds, labels.view(-1, 1))
-                auroc.update(pred_probs, labels.view(-1, 1))
 
         # Compute metrics for entire test set
         test_acc = acc.compute()
         test_precision = precision.compute()
         test_recall = recall.compute()
         test_f1 = f1.compute()
-        test_confusion_matrix = confusion_matrix.compute()
-        test_auroc = auroc.compute()
 
         # Reset metrics
         acc.reset()
         precision.reset()
         recall.reset()
         f1.reset()
-        confusion_matrix.reset()
-        auroc.reset()
 
         return {
             "accuracy": test_acc,
             "precision": test_precision,
             "recall": test_recall,
-            "f1_score": test_f1,
-            "confusion_matrix": test_confusion_matrix,
-            "auc": test_auroc
+            "f1_score": test_f1
         }
