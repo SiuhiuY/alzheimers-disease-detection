@@ -34,23 +34,18 @@ class OptunaCNN(nn.Module):
 
         # Architecture hyperparameters
         # Number of convolutional layers
-        n_layers = trial.suggest_int("n_layers", 1, 4)
+        n_layers = trial.suggest_int("n_layers", 2, 5)
         layers = []
 
         for i in range(n_layers):
             # Output channels per conv layer
-            conv_out_channels = trial.suggest_categorical(
-                f"filters_{i}", [16, 32, 64, 128])
+            conv_out_channels = trial.suggest_int(
+                f"filters_{i}", 32, 128, log=True
+            )
 
             # Kernel size per conv layer
             kernel_size = trial.suggest_categorical(
                 f"conv_{i}_kernel_size", [3, 5])
-
-            # Activation function per conv layer
-            activation_name = trial.suggest_categorical(
-                f"conv_{i}_activation", ["relu", "leaky_relu"])
-            activation = nn.ReLU() if activation_name == "relu" \
-                else nn.LeakyReLU()
 
             # BatchNorm per conv layer
             # padding=kernel_size // 2 to maintain spatial size
@@ -61,6 +56,12 @@ class OptunaCNN(nn.Module):
                 kernel_size, padding=kernel_size // 2))
             if use_batchnorm:
                 layers.append(nn.BatchNorm2d(conv_out_channels))
+
+            # Activation function per conv layer
+            activation_name = trial.suggest_categorical(
+                f"conv_{i}_activation", ["relu", "leaky_relu"])
+            activation = nn.ReLU() if activation_name == "relu" \
+                else nn.LeakyReLU()
             layers.append(activation)
 
             # Pooling per conv layer
@@ -89,6 +90,13 @@ class OptunaCNN(nn.Module):
                 f"fc_{i}_out_features", 32, 256, log=True
             )
             layers.append(nn.Linear(input_features, out_features))
+
+            # BatchNorm per fc layer
+            fc_batchnorm = trial.suggest_categorical(
+                f"fc_{i}_use_batchnorm", [True, False]
+            )
+            if fc_batchnorm:
+                layers.append(nn.BatchNorm1d(out_features))
 
             # Activation function per fc layer
             fc_activation = trial.suggest_categorical(
