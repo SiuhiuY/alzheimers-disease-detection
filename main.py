@@ -101,6 +101,10 @@ def run_model(
             # Single train/val split
             _, train_idx, val_idx = next(inner_cv.cv_loop())
 
+            # Map back to original indices
+            train_idx = train_val_idx[train_idx]
+            val_idx = train_val_idx[val_idx]
+
             # Define model builder function for Objective
             def model_builder(trial):
                 C = features.shape[1]
@@ -119,9 +123,9 @@ def run_model(
             )
 
             objective = Objective(
-                features[train_val_idx],
-                labels[train_val_idx],
-                subjects[train_val_idx],
+                features,
+                labels,
+                subjects,
                 train_idx, val_idx,
                 model_builder,
                 train_transform,
