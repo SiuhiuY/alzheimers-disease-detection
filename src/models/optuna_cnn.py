@@ -34,23 +34,25 @@ class OptunaCNN(nn.Module):
 
         # Architecture hyperparameters
         # Number of convolutional layers
-        n_layers = trial.suggest_int("n_layers", 2, 5)
+        n_layers = trial.suggest_categorical("n_layers", [2, 3])
         layers = []
 
         for i in range(n_layers):
             # Output channels per conv layer
-            conv_out_channels = trial.suggest_int(
-                f"filters_{i}", 32, 128, log=True
-            )
+            conv_out_channels = trial.suggest_categorical(
+                f"filters_{i}", [32, 64, 96]
+                )
 
             # Kernel size per conv layer
-            kernel_size = trial.suggest_categorical(
-                f"conv_{i}_kernel_size", [3, 5])
+            kernel_size = 3
 
             # BatchNorm per conv layer
             # padding=kernel_size // 2 to maintain spatial size
-            use_batchnorm = trial.suggest_categorical(
-                f"conv_{i}_use_batchnorm", [True, False])
+            if i == 0:
+                use_batchnorm = True
+            else:
+                use_batchnorm = trial.suggest_categorical(
+                    f"conv_{i}_use_batchnorm", [True, False])
             layers.append(nn.Conv2d(
                 self.input_channels, conv_out_channels,
                 kernel_size, padding=kernel_size // 2))
@@ -65,8 +67,7 @@ class OptunaCNN(nn.Module):
             layers.append(activation)
 
             # Pooling per conv layer
-            pooling_type = trial.suggest_categorical(
-                f"conv_{i}_pooling", ["max", "average"])
+            pooling_type = "max"
             if self.height > 2 and self.width > 2:
                 layers.append(
                     nn.MaxPool2d(2) if pooling_type == "max"
@@ -84,11 +85,13 @@ class OptunaCNN(nn.Module):
 
         # Fully connected layer hyperparameters
         input_features = flatten_dim
-        n_fc_layers = trial.suggest_int("n_fc_layers", 1, 3)
-        for i in range(n_fc_layers):
-            out_features = trial.suggest_int(
-                f"fc_{i}_out_features", 32, 256, log=True
+        n_fc_layers = trial.suggest_categorical(
+            "n_fc_layers", [2, 3]
             )
+        for i in range(n_fc_layers):
+            out_features = trial.suggest_categorical(
+                f"fc_{i}_out_features", [128, 192, 256]
+                )
             layers.append(nn.Linear(input_features, out_features))
 
             # BatchNorm per fc layer
@@ -108,7 +111,7 @@ class OptunaCNN(nn.Module):
 
             # Dropout per fc layer
             dropout_rate = trial.suggest_float(
-                f"fc_{i}_dropout_rate", 0.0, 0.5
+                f"fc_{i}_dropout_rate", 0.05, 0.35
             )
             layers.append(nn.Dropout(dropout_rate))
 
