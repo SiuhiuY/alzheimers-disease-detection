@@ -40,7 +40,7 @@ class OptunaCNN(nn.Module):
         for i in range(n_layers):
             # Output channels per conv layer
             conv_out_channels = trial.suggest_categorical(
-                f"filters_{i}", [32, 64, 96]
+                f"filters_{i}", [48, 64, 96]
                 )
 
             # Kernel size per conv layer
@@ -67,7 +67,7 @@ class OptunaCNN(nn.Module):
             layers.append(activation)
 
             # Pooling per conv layer
-            pooling_type = "max"
+            pooling_type = "average"
             if self.height > 2 and self.width > 2:
                 layers.append(
                     nn.MaxPool2d(2) if pooling_type == "max"

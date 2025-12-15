@@ -69,35 +69,35 @@ class Objective(object):
             float: accuracy on the validation set.
         """
         # Suggest optimiser and learning rate
-        # optimizer_name = trial.suggest_categorical(
-        #     "optimizer", ["Adam", "AdamW", "RMSprop"]
-        # )
-        # learning_rate = trial.suggest_float(
-        #     "learning_rate", 1e-5, 1e-2, log=True
-        # )
-        # weight_decay = trial.suggest_float(
-        #     "weight_decay", 1e-6, 1e-2, log=True
-        # )
-        # batch_size = trial.suggest_categorical(
-        #     "batch_size", [32, 64, 128]
-        # )
+        optimizer_name = trial.suggest_categorical(
+            "optimizer", ["Adam", "AdamW", "RMSprop"]
+        )
+        learning_rate = trial.suggest_float(
+            "learning_rate", 1e-4, 3e-3, log=True
+        )
+        weight_decay = trial.suggest_float(
+            "weight_decay", 1e-5, 1e-3, log=True
+        )
+        batch_size = trial.suggest_categorical(
+            "batch_size", [64, 128]
+        )
 
         # Fixed hyperparameters for architecture search
-        optimizer_name = trial.suggest_categorical(
-            "optimizer", ["Adam"]
-        )
+        # optimizer_name = trial.suggest_categorical(
+        #     "optimizer", ["Adam"]
+        # )
 
-        learning_rate = trial.suggest_float(
-            "learning_rate", 1e-3, 1e-3
-        )
+        # learning_rate = trial.suggest_float(
+        #     "learning_rate", 1e-3, 1e-3
+        # )
 
-        weight_decay = trial.suggest_float(
-            "weight_decay", 1e-4, 1e-4
-        )
+        # weight_decay = trial.suggest_float(
+        #     "weight_decay", 1e-4, 1e-4
+        # )
 
-        batch_size = trial.suggest_categorical(
-            "batch_size", [64]
-        )
+        # batch_size = trial.suggest_categorical(
+        #     "batch_size", [64]
+        # )
 
         # Build model
         model = self.model_builder(trial).to(self.device)
