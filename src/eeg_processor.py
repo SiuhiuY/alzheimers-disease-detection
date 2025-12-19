@@ -87,7 +87,7 @@ class EEGProcessor:
         self.psd = self.epochs.compute_psd(
             method="welch",
             fmin=0.5,
-            fmax=40)
+            fmax=45)
         self.ch_names = self.psd.info["ch_names"]  # Get channel names
 
         # Convert PSD to numpy arrays with .get_data()
