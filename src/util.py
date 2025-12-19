@@ -144,7 +144,8 @@ def get_data_loaders(features, labels, subjects,
     train_loader = DataLoader(
         train_set,
         batch_size=batch_size,
-        shuffle=shuffle
+        shuffle=shuffle,
+        drop_last=True
     )
 
     test_set = EEGDataset(
@@ -157,7 +158,8 @@ def get_data_loaders(features, labels, subjects,
     test_loader = DataLoader(
         test_set,
         batch_size=batch_size,
-        shuffle=False
+        shuffle=False,
+        drop_last=False
     )
 
     return train_loader, test_loader
