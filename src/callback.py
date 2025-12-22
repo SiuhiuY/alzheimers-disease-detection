@@ -6,6 +6,7 @@ import os
 # Reference:
 # https://github.com/Bjarten/early-stopping-pytorch/blob/main/early_stopping_pytorch/early_stopping.py
 # https://github.com/souvlasvegas/EEG-DICE-net/blob/main/machine_learning/early_stopping.py
+# https://github.com/keras-team/keras/blob/v3.12.0/keras/src/callbacks/early_stopping.py#L8
 
 
 class EarlyStopping:
@@ -32,17 +33,19 @@ class EarlyStopping:
     """
     def __init__(self, patience=5, min_delta=0,
                  restore_best_weights=True,
+                 start_from_epoch=0,
                  verbose=0):
         self.patience = patience
         self.min_delta = min_delta
         self.restore_best_weights = restore_best_weights
+        self.start_from_epoch = start_from_epoch
         self.verbose = verbose
         self.counter = 0
         self.best_loss = None
         self.best_model = None
         self.best_epoch = 0
 
-    def __call__(self, val_loss, model, epoch=None):
+    def __call__(self, val_loss, model, epoch):
         """Call method to check if training should stop.
 
         Args:
@@ -53,10 +56,17 @@ class EarlyStopping:
         Returns:
             bool: True if training should stop, False otherwise.
         """
+        if epoch is None:
+            raise ValueError("Epoch number must be provided.")
+
         if np.isnan(val_loss):
             # Prevent corruption caused by numerical instability
             if self.verbose:
                 print("Warning: Validation loss is NaN. Ignoring this epoch.")
+            return False
+
+        # Skip early stopping check until start_from_epoch
+        if epoch < self.start_from_epoch:
             return False
 
         # First epoch initialisation
@@ -65,6 +75,7 @@ class EarlyStopping:
             self.best_loss = val_loss
             # state_dict: a dictionary containing model's parameters
             self.best_model = copy.deepcopy(model.state_dict())
+            self.best_epoch = epoch
             if self.verbose:
                 print(f"Epoch {epoch}: Initial loss = {val_loss:.6f}")
 
@@ -77,7 +88,7 @@ class EarlyStopping:
             self.best_loss = val_loss
             # Overwrite with new weights
             self.best_model = copy.deepcopy(model.state_dict())
-            self.best_epoch = epoch if epoch is not None else 0
+            self.best_epoch = epoch
             self.counter = 0  # reset counter
 
         else:
