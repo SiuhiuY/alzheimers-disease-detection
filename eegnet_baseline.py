@@ -1,25 +1,20 @@
 import os
-import mne
 import numpy as np
 import pandas as pd
-import random
 import wandb
 import optuna
 import logging
 import gc
 import pickle
-import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.optimizers import Adam, RMSprop, AdamW
-from tensorflow.keras.callbacks import (ModelCheckpoint, EarlyStopping)
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras import backend as K
-from wandb.integration.keras import WandbMetricsLogger
 from optuna.integration import KerasPruningCallback
 from sklearn.model_selection import LeaveOneGroupOut, StratifiedGroupKFold
 from sklearn.utils import class_weight
-from sklearn.metrics import (confusion_matrix, accuracy_score, roc_auc_score,
-                             precision_score, recall_score, f1_score)
+from sklearn.metrics import accuracy_score
 from src.models.EEGNet import EEGNet
 from src.eeg_processor import EEGProcessor
 from src.subject_processor import SubjectProcessor
@@ -27,6 +22,7 @@ from src.subject_processor import SubjectProcessor
 # Reference:
 # https://stackoverflow.com/questions/63224426/how-can-i-cross-validate-by-pytorch-and-optuna
 # https://medium.com/optuna/optuna-meets-weights-and-biases-58fc6bab893
+
 
 # ----------------------------------------------------------------------------
 #                          Configuration Settings
@@ -154,6 +150,7 @@ def load_eeg_data(label_map, chans, samples, kernels, downsample_to=None):
             all_labels.extend(subj_labels)
             all_subjects.extend(subj_ids)
 
+            # Observe the min and max number of epochs per subjects
             if min_epochs == 0 or n_epochs < min_epochs:
                 min_epochs = n_epochs
             if n_epochs > max_epochs:
@@ -171,45 +168,6 @@ def load_eeg_data(label_map, chans, samples, kernels, downsample_to=None):
     print(f"Maximum epochs per subject: {max_epochs}")
 
     return X_all, y_all, subjects_all
-
-
-def calculate_metrics(model, X_test, y_test, threshold=0.5):
-    """Calculate evaluation metrics on the test set.
-
-    Args:
-        model (tf.keras.Model): Trained EEGNet model
-        X_test (np.ndarray): Test features of shape
-                             (n_samples, n_channels, n_times, 1)
-        y_test (np.ndarray): True labels of shape (n_samples,)
-        threshold (float): Threshold for binary classification
-
-    Returns:
-        dict: Dictionary containing accuracy, precision, recall,
-              f1_score, auc, and confusion_matrix.
-    """
-    # Get model predictions
-    y_pred_probs = model.predict(X_test)
-    y_pred = (y_pred_probs >= threshold).astype(int)
-
-    # Calculate metrics
-    accuracy = accuracy_score(y_test, y_pred)
-    precision = precision_score(y_test, y_pred, zero_division=0)
-    recall = recall_score(y_test, y_pred, zero_division=0)
-    f1 = f1_score(y_test, y_pred, zero_division=0)
-    auc = roc_auc_score(y_test, y_pred_probs)
-    cm = confusion_matrix(y_test, y_pred)
-
-    return {
-        "accuracy": accuracy,
-        "precision": precision,
-        "recall": recall,
-        "f1_score": f1,
-        "auc": auc,
-        "confusion_matrix": cm,
-        "y_true": y_test,
-        "y_pred_probs": y_pred_probs,
-        "y_pred": y_pred
-    }
 
 
 def calculate_class_weights(y):
@@ -294,8 +252,8 @@ def build_model(params, num_classes, chans, samples):
 #                       Optuna Objective Function
 # ----------------------------------------------------------------------------
 
-def objective(trial, outer_fold, X_train_val, y_train_val,
-              subjects_train_val, num_classes, chans, samples, class_names
+def objective(trial, outer_fold, X_train, y_train, X_val, y_val,
+              best_model_state, num_classes, chans, samples, class_names
               ):
     """
 
@@ -320,10 +278,15 @@ def objective(trial, outer_fold, X_train_val, y_train_val,
 
     # Define callbacks
     early_stopping = EarlyStopping(monitor="val_loss",
-                                   patience=10,
+                                   patience=15,
                                    restore_best_weights=True,
-                                   start_from_epoch=3,
+                                   start_from_epoch=5,
                                    verbose=0)
+    reduce_lr = ReduceLROnPlateau(monitor="val_loss",
+                                  factor=0.5,
+                                  patience=2,
+                                  min_lr=1e-6,
+                                  verbose=0)
 
     # Suggest hyperparameters
     params = {
@@ -338,87 +301,77 @@ def objective(trial, outer_fold, X_train_val, y_train_val,
             "learning_rate", 3e-5, 5e-4, log=True),
         "optimizer": trial.suggest_categorical(
             "optimizer", ["adam"]),
-        "batch_size": trial.suggest_categorical("batch_size", [32, 64, 128]),
-        "epochs": trial.suggest_categorical("epochs", [10, 20, 30])
+        "batch_size": trial.suggest_categorical("batch_size", [32, 64, 128])
         }
 
     # Initialise wandb logging for monitoring learning process
-    config = params
-    config["trial.number"] = trial.number
-    wandb.init(
-        project=f"EEGNet_Nested_CV_{'_'.join(class_names)}_v2",
-        name=f"Outer_Fold{outer_fold + 1}_Trial_{trial.number + 1}",
-        config=config,
+    wandb_config = {**params, "trial_number": trial.number}
+
+    with wandb.init(
+        project=f"EEGNet_{'_'.join(class_names)}_v3",
+        name=f"Outer_Fold{outer_fold + 1}_Trial_{trial.number}",
+        config=wandb_config,
         group=f"Outer_Fold_{outer_fold + 1}",
         job_type="tuning",
         reinit=True
-    )
+    ):
 
-    # Single train/val split
-    train_idx, val_idx = next(single_split.split(
-        X_train_val, y_train_val, groups=subjects_train_val
-    ))
+        # Build model
+        model = build_model(params, num_classes, chans, samples)
 
-    if len(set(np.unique(subjects_train_val[train_idx])) &
-           set(np.unique(subjects_train_val[val_idx]))) != 0:
-        raise ValueError(
-            "Subjects overlap between train and validation sets!"
-        )
+        # Train model
+        history = model.fit(X_train, y_train,
+                            validation_data=(X_val, y_val),
+                            batch_size=params["batch_size"],
+                            epochs=50,
+                            # class_weight=calculate_class_weights(y_train),
+                            callbacks=[
+                                # monitor validation loss after each epoch
+                                KerasPruningCallback(trial, "val_loss"),
+                                reduce_lr,
+                                early_stopping],
+                            verbose=0)
 
-    # Build training and validation sets
-    X_train, y_train, _ = (
-        X_train_val[train_idx],
-        y_train_val[train_idx],
-        subjects_train_val[train_idx]
-    )
+        # Log training history to WandB
+        for epoch in range(len(history.history["loss"])):
+            wandb.log({
+                "train_loss": history.history["loss"][epoch],
+                "train_accuracy": history.history["accuracy"][epoch],
+                "val_loss": history.history["val_loss"][epoch],
+                "val_accuracy": history.history["val_accuracy"][epoch]
+            }, step=epoch)
 
-    X_val, y_val, _ = (
-        X_train_val[val_idx],
-        y_train_val[val_idx],
-        subjects_train_val[val_idx]
-    )
+        # Get the number of trained epochs and the best epoch
+        trained_epochs = len(history.history["val_loss"])
+        best_epoch = int(np.argmin(history.history["val_loss"])) + 1
 
-    # Build model
-    model = build_model(params, num_classes, chans, samples)
+        # Evaluate model on validation set
+        val_loss, val_accuracy = model.evaluate(X_val, y_val, verbose=0)
+        print(f"Trial {trial.number} - "
+              f"Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}")
 
-    # Train model
-    history = model.fit(X_train, y_train,
-                        validation_data=(X_val, y_val),
-                        batch_size=params["batch_size"],
-                        epochs=params["epochs"],
-                        # class_weight=calculate_class_weights(y_train),
-                        callbacks=[
-                            KerasPruningCallback(trial, "val_loss"),
-                            early_stopping],
-                        verbose=0)
+        # Check if this is the best model so far
+        if val_loss < best_model_state["best_val_loss"]:
+            best_model_state["best_val_loss"] = val_loss
+            # Save the best model
+            model.save(best_model_state["path"])
+            # Set user attribute for best model path
+            trial.set_user_attr("best_model_path", best_model_state["path"])
 
-    # Log training history to WandB
-    for epoch in range(len(history.history["loss"])):
-        wandb.log({
-            "train_loss": history.history["loss"][epoch],
-            "train_accuracy": history.history["accuracy"][epoch],
-            "val_loss": history.history["val_loss"][epoch],
-            "val_accuracy": history.history["val_accuracy"][epoch]
-        }, step=epoch)
+        # Set user attributes for the trial
+        trial.set_user_attr("trained_epochs", trained_epochs)
+        trial.set_user_attr("best_epoch", best_epoch)
+        trial.set_user_attr("val_loss", val_loss)
+        trial.set_user_attr("val_accuracy", val_accuracy)
 
-    if trial.should_prune():
-        wandb.run.summary["state"] = "pruned"
-        wandb.finish(quiet=True)
-        raise optuna.TrialPruned()
+        # Log results to wandb
+        wandb.run.summary["trained_epochs"] = trained_epochs
+        wandb.run.summary["best_epoch"] = best_epoch
+        wandb.run.summary["val_loss"] = val_loss
+        wandb.run.summary["val_accuracy"] = val_accuracy
+        wandb.run.summary["state"] = "completed"
 
-    # Evaluate on validation set
-    val_loss, val_acc = model.evaluate(X_val, y_val, verbose=0)
-    print(f"Trial {trial.number} - Validation Accuracy: {val_acc}")
-
-    wandb.run.summary["val_accuracy"] = val_acc
-    wandb.run.summary["state"] = "completed"
-    wandb.finish()
-
-    # Clear session
-    K.clear_session()
-    gc.collect()
-
-    return val_acc
+        return val_loss
 
 
 # ----------------------------------------------------------------------------
@@ -447,7 +400,7 @@ if __name__ == "__main__":
     # Define EEGNet input shape parameters
     sampling_rate = 128  # Hz
     epoch_duration = 4   # seconds
-    samples = sampling_rate * epoch_duration  # 1000 samples
+    samples = sampling_rate * epoch_duration
     chans = 19  # Number of EEG channels
     kernels = 1  # Single kernel/channel
 
@@ -480,7 +433,7 @@ if __name__ == "__main__":
         "subject_metadata": {}
     }
 
-    # Model checkpoint and early stopping for outer folds
+    # Model save directory
     result_dir = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "results", model_name, "_".join(class_names))
@@ -505,79 +458,99 @@ if __name__ == "__main__":
         )
         test_subject_id = subjects_test[0]
 
-        # Run hyperparameter optimisation with inner CV
+        # Inner single train/val single split
+        train_idx, val_idx = next(single_split.split(
+            X_train_val, y_train_val, groups=subjects_train_val
+        ))
+
+        if len(set(np.unique(subjects_train_val[train_idx])) &
+               set(np.unique(subjects_train_val[val_idx]))) != 0:
+            raise ValueError(
+                "Subjects overlap between train and validation sets!"
+                )
+
+        # Build training and validation sets
+        X_train, y_train, _ = (
+            X_train_val[train_idx],
+            y_train_val[train_idx],
+            subjects_train_val[train_idx]
+        )
+
+        X_val, y_val, _ = (
+            X_train_val[val_idx],
+            y_train_val[val_idx],
+            subjects_train_val[val_idx]
+        )
+
+        # Initialise best model state for this outer fold
+        best_model_state = {
+            "best_val_loss": float("inf"),
+            "path": os.path.join(
+                result_dir, f"best_model_outer_fold_{outer_fold+1}.keras"
+            )
+        }
+
+        # Run hyperparameter optimisation with inner train/val split
         # to find the best configuration for this outer fold
         study = optuna.create_study(
-            direction="maximize",
+            direction="minimize",
             study_name=f"Outer_Fold_{outer_fold + 1}_Study",
             sampler=optuna.samplers.TPESampler(seed=RANDOM_SEED),
-            pruner=optuna.pruners.MedianPruner(n_startup_trials=5))
+            pruner=optuna.pruners.MedianPruner(n_startup_trials=5,
+                                               n_warmup_steps=5)
+            )
 
         study.optimize(
             lambda trial: objective(
-                trial, outer_fold, single_split, X_train_val, y_train_val,
-                subjects_train_val, num_classes, chans, samples, class_names
+                trial, outer_fold, X_train, y_train, X_val, y_val,
+                best_model_state, num_classes, chans, samples, class_names
                 ),
             n_trials=10)
 
-        # Retrieve the best model from the study
-        best_trial = study.best_trial
-        best_score = best_trial.value
-        best_params = best_trial.params
+        # Save study object
+        study_filepath = os.path.join(
+            result_dir, f"study_outer_fold_{outer_fold + 1}.pkl")
+        with open(study_filepath, "wb") as f:
+            pickle.dump(study, f)
 
-        print(f"Best validation accuracy: {best_score}")
+        # Retrieve the best trial from the study
+        best_trial = study.best_trial
+        best_params = best_trial.params
+        best_score = best_trial.user_attrs["val_accuracy"]
+        best_model_path = best_model_state["path"]  # inner best model path
+        best_epoch = best_trial.user_attrs["best_epoch"]
+
+        print(f"Best validation accuracy: {best_score:.4f}")
         print("Best hyperparameters: ")
         for key, value in best_params.items():
             print(f"    {key}: {value}")
 
-        # Retrain best model on entire train/val set
-        # Build new model with best hyperparameters
-        new_model = build_model(best_params, num_classes, chans, samples)
-        best_epochs = int(round(best_trial.user_attrs["avg_epochs"]))
-
-        new_model.fit(X_train_val, y_train_val,
-                      epochs=best_epochs,
-                      batch_size=best_params["batch_size"],
-                      class_weight=calculate_class_weights(y_train_val),
-                      verbose=1)
-
-        # Save the best model weights for this outer fold
-        model_filepath = os.path.join(
-            result_dir, f"best_model_outer_fold_{outer_fold+1}.keras"
-            )
-        new_model.save(model_filepath)
-
-        # Reload the best model weights
-        new_model = tf.keras.models.load_model(model_filepath)
+        # Reload the best model architecture and weights
+        best_model = tf.keras.models.load_model(best_model_path)
 
         # Evaluate the best configuration on the test set for this outer fold
-        test_metrics = calculate_metrics(new_model, X_test, y_test)
-        print(f"Outer fold {outer_fold+1} Test Metrics:")
-        for metric_name, metric_value in test_metrics.items():
-            print(f"    {metric_name}: {metric_value}")
+        y_pred_probs = best_model.predict(X_test).flatten()
+        y_pred = (y_pred_probs >= 0.5).astype(int)
+        test_accuracy = accuracy_score(y_test, y_pred)
+        print(f"Outer fold {outer_fold+1} Test Accuracy: {test_accuracy}")
 
         # Store outer fold results
         fold_result = {
             "outer_fold": outer_fold + 1,
             "test_subject_id": test_subject_id,
             "best_params": best_params,
-            "best_epochs": best_epochs,
-            "model_filepath": model_filepath,
-
-            "test_accuracy": test_metrics["accuracy"],
-            "test_precision": test_metrics["precision"],
-            "test_recall": test_metrics["recall"],
-            "test_f1_score": test_metrics["f1_score"],
-
-            "true_labels": test_metrics["y_true"].tolist(),
-            "pred_probs": test_metrics["y_pred_probs"].flatten().tolist(),
-            "pred_labels": test_metrics["y_pred"].tolist()
+            "best_epochs": best_epoch,
+            "inner_model_filepath": best_model_path,
+            "test_accuracy": test_accuracy,
+            "true_labels": y_test,
+            "pred_probs": y_pred_probs,
+            "pred_labels": y_pred
             }
 
         all_results["outer_folds"].append(fold_result)
 
         # Clear session
-        del new_model
+        del best_model
         K.clear_session()
         gc.collect()
 
