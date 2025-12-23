@@ -444,6 +444,9 @@ if __name__ == "__main__":
         outer_cv.split(X_all, y_all, groups=subjects_all)
     ):
         print(f"\n--- Outer Fold {outer_fold + 1} ---")
+        print(f"Train/Val size: {len(train_val_idx)}, "
+              f"Test size: {len(test_idx)}")
+        print(f"Test Subject ID: {subjects_all[test_idx][0]}")
 
         # Split train/validation and test sets
         X_train_val, y_train_val, subjects_train_val = (
@@ -462,6 +465,8 @@ if __name__ == "__main__":
         train_idx, val_idx = next(single_split.split(
             X_train_val, y_train_val, groups=subjects_train_val
         ))
+        print(f"Inner Train size: {len(train_idx)}, "
+              f"Validation size: {len(val_idx)}")
 
         if len(set(np.unique(subjects_train_val[train_idx])) &
                set(np.unique(subjects_train_val[val_idx]))) != 0:
@@ -486,7 +491,7 @@ if __name__ == "__main__":
         best_model_state = {
             "best_val_loss": float("inf"),
             "path": os.path.join(
-                result_dir, f"best_model_outer_fold_{outer_fold+1}.keras"
+                result_dir, f"best_model_outer_fold_{outer_fold + 1}.keras"
             )
         }
 
@@ -519,7 +524,9 @@ if __name__ == "__main__":
         best_score = best_trial.user_attrs["val_accuracy"]
         best_model_path = best_model_state["path"]  # inner best model path
         best_epoch = best_trial.user_attrs["best_epoch"]
+        trained_epochs = best_trial.user_attrs["trained_epochs"]
 
+        print(f"\n--- Outer Fold {outer_fold + 1} Results ---")
         print(f"Best validation accuracy: {best_score:.4f}")
         print("Best hyperparameters: ")
         for key, value in best_params.items():
@@ -537,9 +544,11 @@ if __name__ == "__main__":
         # Store outer fold results
         fold_result = {
             "outer_fold": outer_fold + 1,
+            "best_trial_number": best_trial.number,
             "test_subject_id": test_subject_id,
             "best_params": best_params,
             "best_epochs": best_epoch,
+            "trained_epochs": trained_epochs,
             "inner_model_filepath": best_model_path,
             "test_accuracy": test_accuracy,
             "true_labels": y_test,
@@ -554,6 +563,7 @@ if __name__ == "__main__":
         K.clear_session()
         gc.collect()
 
+    # Save all results
     with open(os.path.join(result_dir, "all_results.pkl"), "wb") as f:
         pickle.dump(all_results, f)
 

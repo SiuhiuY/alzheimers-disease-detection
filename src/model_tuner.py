@@ -107,7 +107,7 @@ class Objective(object):
         classes_str = '_'.join(self.class_names)
 
         wandb.init(
-            project=f"EEG_Classification_2D_{self.band}_{classes_str}",
+            project=f"EEG_Classification_2D_{self.band}_{classes_str}_v2",
             name=f"Outer_Fold_{self.outer_fold + 1}_Trial_{trial.number}",
             config=wandb_config,
             group=f"Outer_Fold_{self.outer_fold + 1}",
@@ -150,7 +150,7 @@ class Objective(object):
         # Train the model
         trainer = ModelTrainer(
             model, train_loader, val_loader,
-            optimizer, criterion, self.device, threshold=0.5
+            criterion, self.device, optimizer, threshold=0.5
             )
 
         for epoch in range(self.num_epochs):
