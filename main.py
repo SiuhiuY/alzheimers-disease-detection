@@ -7,9 +7,7 @@ import wandb
 import torch
 import torch.nn as nn
 import torchvision.transforms as T
-from torch.utils.data import DataLoader
 from src.feature_loader import load_features
-from src.dataset import EEGDataset
 from src.models.optuna_cnn import OptunaCNN
 from src.cross_validation import CrossValidator
 from src.model_trainer import ModelTrainer
@@ -79,6 +77,7 @@ def run_model(
         "results", model_name.__name__, band, "_".join(class_names))
     os.makedirs(result_dir, exist_ok=True)
 
+    # Outer Leave-One Subject Out cross-validation loop
     for outer_fold, train_val_idx, test_idx in outer_cv.cv_loop():
         print(f"\n--- Outer Fold {outer_fold + 1} ---")
         print(f"Train/Val size: {len(train_val_idx)}, "
@@ -99,11 +98,18 @@ def run_model(
 
         if inner_cv_strategy is None:
             # Single train/val split
-            _, train_idx, val_idx = next(inner_cv.cv_loop())
+            _, inner_train_idx, inner_val_idx = next(inner_cv.cv_loop())
 
             # Map back to original indices
-            train_idx = train_val_idx[train_idx]
-            val_idx = train_val_idx[val_idx]
+            train_idx = train_val_idx[inner_train_idx]
+            val_idx = train_val_idx[inner_val_idx]
+            print(f"Inner Train size: {len(train_idx)}, "
+                  f"Val size: {len(val_idx)}")
+
+            # Sanity check
+            if not np.array_equal(subjects[train_val_idx][inner_train_idx],
+                                  subjects[train_idx]):
+                raise ValueError("Index mapping error in inner CV.")
 
             # Define model builder function for Objective
             def model_builder(trial):
@@ -114,12 +120,21 @@ def run_model(
 
                 return model_name(trial, input_shape=input_shape, num_classes=1)
 
+            # Initialise best model state for this study
+            best_model_state = {
+                "best_val_loss": float('inf'),
+                "path": os.path.join(
+                    result_dir, f"best_model_outer_fold_{outer_fold + 1}.pt"
+                )
+            }
+
             # Create optuna study for hyperparameter tuning
             study = optuna.create_study(
-                direction="maximize",
+                direction="minimize",
                 study_name=f"Outer_Fold_{outer_fold + 1}_Study",
                 sampler=optuna.samplers.TPESampler(seed=seed),
-                pruner=optuna.pruners.MedianPruner(n_startup_trials=5)
+                pruner=optuna.pruners.MedianPruner(n_startup_trials=5,
+                                                   n_warmup_steps=5)
             )
 
             objective = Objective(
@@ -134,37 +149,43 @@ def run_model(
                 DEVICE,
                 num_epochs=n_epochs,
                 use_class_weights=use_class_weights,
+                best_model_state=best_model_state
             )
 
             study.optimize(
                 lambda trial: objective(trial), n_trials=10)
 
-            # Retrieve the best model from this study
-            best_trial = study.best_trial
-            best_score = best_trial.value
-            best_params = best_trial.params
-            best_batch_size = best_params["batch_size"]
-            best_epochs = best_trial.user_attrs["best_epoch"]
+            # Save the study
+            study_filepath = os.path.join(
+                result_dir, f"study_outer_fold_{outer_fold + 1}.pkl")
+            with open(study_filepath, "wb") as f:
+                pickle.dump(study, f)
 
+            # Retrieve the best trial from this study
+            best_trial = study.best_trial
+            best_params = best_trial.params
+            best_score = best_trial.user_attrs["val_accuracy"]
+            best_model_path = best_model_state["path"]
+            best_epochs = best_trial.user_attrs["best_epoch"]
+            trained_epochs = best_trial.user_attrs["trained_epochs"]
+
+            print(f"Best trial for Outer Fold {outer_fold + 1}:")
+            print(f"Best validation accuracy: {best_score:.4f}")
+            print("Best hyperparameters: ")
+            for key, value in best_params.items():
+                print(f"    {key}: {value}")
+
+            # Reload best model state dict
+            best_model = model_builder(best_trial).to(DEVICE)
+            best_model.load_state_dict(torch.load(best_model_path))
+
+            # Retrieve best hyperparameters
+            best_batch_size = best_params["batch_size"]
             criterion = util.get_criterion(
                 use_class_weights, labels[train_val_idx], DEVICE
             )
 
-            print(f"Best trial for Outer Fold {outer_fold + 1}:")
-            print(f"  Value: {best_score}")
-            print("   Params: ")
-            for key, value in best_params.items():
-                print(f"    {key}: {value}")
-
-            # Save the best model from this study
-            best_model_state = best_trial.user_attrs["best_model_state_dict"]
-            model_filepath = os.path.join(
-                result_dir, f"best_model_{outer_fold + 1}.pt"
-            )
-            torch.save(best_model_state, model_filepath)
-
-            # Retrain the model on the entire train/val set for evaluation
-            # Split train_val and test sets
+            # Evaluate on the test set
             train_val_loader, test_loader = util.get_data_loaders(
                 features,
                 labels,
@@ -175,33 +196,24 @@ def run_model(
             )
             test_subject_id = subjects[test_idx]
 
-            # Load the best model architecture
-            final_model = model_builder(best_trial).to(DEVICE)
-            final_model.load_state_dict(best_model_state)
-
-            best_lr = best_params["learning_rate"]
-            optimizer_name = best_params["optimizer"]
-            best_optimizer = util.get_optimizer(
-                optimizer_name, final_model.parameters(),
-                best_lr, weight_decay=best_params["weight_decay"]
-            )
-
-            # Retrain the model
-            trainer = ModelTrainer(final_model, train_val_loader, test_loader,
-                                   optimizer=best_optimizer,
-                                   criterion=criterion, device=DEVICE,
-                                   threshold=0.5)
-
-            # Train on the entire train/val set
-            trainer.fit(best_epochs)
+            # Create trainer for best model
+            best_trainer = ModelTrainer(best_model,
+                                        train_val_loader,
+                                        test_loader,
+                                        criterion=criterion,
+                                        device=DEVICE,
+                                        optimizer=None,
+                                        threshold=0.5
+                                        )
 
             # Evaluate on the test set
-            test_metrics = trainer.calculate_metrics()
-            predictions = trainer.predict()
-
-            print(f"Test Metrics for Outer Fold {outer_fold + 1}:")
-            for metric_name, metric_value in test_metrics.items():
-                print(f"  {metric_name}: {metric_value:.4f}")
+            _, test_accuracy = best_trainer.evaluate_one_epoch()
+            predictions = best_trainer.predict()
+            y_pred_probs = predictions["y_pred_probs"]
+            y_pred = predictions["y_pred"]
+            y_true = predictions["y_true"]
+            print(f"Outer Fold {outer_fold + 1} Test Accuracy: "
+                  f"{test_accuracy:.4f}")
 
             # Store outer fold results
             fold_result = {
@@ -210,16 +222,12 @@ def run_model(
                 "test_subject_id": test_subject_id,
                 "best_params": best_params,
                 "best_epochs": best_epochs,
-                "model_filepath": model_filepath,
-
-                "test_accuracy": test_metrics["accuracy"],
-                "test_precision": test_metrics["precision"],
-                "test_recall": test_metrics["recall"],
-                "test_f1_score": test_metrics["f1_score"],
-
-                "true_labels": predictions["y_true"],
-                "pred_probs": predictions["y_pred_probs"].flatten().tolist(),
-                "pred_labels": predictions["y_pred"].tolist()
+                "trained_epochs": trained_epochs,
+                "model_filepath": best_model_path,
+                "test_accuracy": test_accuracy.item(),
+                "true_labels": y_true,
+                "pred_probs": y_pred_probs,
+                "pred_labels": y_pred
             }
 
             all_results["outer_folds"].append(fold_result)
@@ -232,17 +240,7 @@ def run_model(
     with open(os.path.join(result_dir, "all_results.pkl"), "wb") as f:
         pickle.dump(all_results, f)
 
-    # Calculate overall statistics
-    all_accuracies = [
-        fold["test_accuracy"] for fold in all_results["outer_folds"]
-    ]
-    mean_accuracy = np.mean(all_accuracies)
-    std_accuracy = np.std(all_accuracies)
-
-    print(f"Mean Accuracy: {mean_accuracy:.4f}")
-    print(f"Standard Deviation of Accuracy: {std_accuracy:.4f}")
-
-    print("Nested cross-validation completed. Results saved.")
+    print("LOSO cross-validation completed. Results saved.")
 
 
 if __name__ == "__main__":
@@ -264,7 +262,7 @@ if __name__ == "__main__":
         T.RandomRotation(45)
     ])
     RANDOM_SEED = 123
-    n_epochs = 20
+    n_epochs = 50
 
     # Run the model training
     run_model(
@@ -276,7 +274,7 @@ if __name__ == "__main__":
         band=band,
         outer_cv_strategy='loso',
         inner_cv_strategy=None,  # inner single train / val split
-        use_class_weights=True,
+        use_class_weights=False,
         train_transform=train_transform,
         seed=RANDOM_SEED
     )
