@@ -5,6 +5,7 @@ import wandb
 import torch
 import torch.nn as nn
 import src.util as util
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from src.model_trainer import ModelTrainer
 from src.callback import EarlyStopping
 from src.cross_validation import CrossValidator
@@ -24,8 +25,9 @@ class Objective(object):
         model_builder, train_transform,
         band, class_names, label_map,
         outer_fold, model_name, seed,
-        device, num_epochs=20,
-        use_class_weights=True
+        device, num_epochs=50,
+        use_class_weights=True,
+        best_model_state=None
     ):
         """Initialise the Objective.
 
@@ -58,6 +60,7 @@ class Objective(object):
         self.outer_fold = outer_fold
         self.model_name = model_name
         self.seed = seed
+        self.best_model_state = best_model_state
 
     def __call__(self, trial):
         """Call method to execute the objective function.
@@ -99,22 +102,21 @@ class Objective(object):
         #     "batch_size", [64]
         # )
 
-        # Build model
-        model = self.model_builder(trial).to(self.device)
-
         # Intialise wandb for this trial
-        config = trial.params
-        config["trial_number"] = trial.number
+        wandb_config = {**trial.params, "trial_number": trial.number}
         classes_str = '_'.join(self.class_names)
 
         wandb.init(
             project=f"EEG_Classification_2D_{self.band}_{classes_str}",
-            name=f"Outer_Fold_{self.outer_fold + 1}_Trial_{trial.number+1}",
-            config=config,
+            name=f"Outer_Fold_{self.outer_fold + 1}_Trial_{trial.number}",
+            config=wandb_config,
             group=f"Outer_Fold_{self.outer_fold + 1}",
             job_type="tuning",
             reinit=True
         )
+
+        # Build model
+        model = self.model_builder(trial).to(self.device)
 
         # Create training and validation datasets
         train_loader, val_loader = util.get_data_loaders(
@@ -125,31 +127,31 @@ class Objective(object):
             shuffle=True
         )
 
-        # Set up loss function
+        # Set up optimizer and loss function
+        optimizer = util.get_optimizer(
+            optimizer_name, model.parameters(), learning_rate, weight_decay
+        )
         criterion = util.get_criterion(
             self.use_class_weights, self.labels[self.train_idx], self.device
             )
 
-        # Set up optimizer
-        optimizer = util.get_optimizer(
-            optimizer_name, model.parameters(), learning_rate, weight_decay
+        # Set up early stopping and learning rate scheduler
+        early_stopping = EarlyStopping(
+            patience=15,
+            restore_best_weights=True,
+            start_from_epoch=5,
+            verbose=0
         )
+        reduce_lr = ReduceLROnPlateau(
+            optimizer, mode='min', factor=0.5,
+            patience=5, min_lr=1e-6, verbose=False
+            )
 
         # Train the model
         trainer = ModelTrainer(
             model, train_loader, val_loader,
-            optimizer, criterion, self.device, threshold=0.5)
-
-        # Early stopping
-        early_stopping = EarlyStopping(
-            patience=5, min_delta=0.0,
-            restore_best_weights=True,
-            verbose=0
-        )
-
-        # Initialise val accuracy
-        best_val_acc = 0.0
-        best_model_state = None
+            optimizer, criterion, self.device, threshold=0.5
+            )
 
         for epoch in range(self.num_epochs):
             train_loss, train_acc = trainer.train_one_epoch()
@@ -163,34 +165,55 @@ class Objective(object):
                 "val_accuracy": val_acc
             }, step=epoch)
 
-            # Update best validation accuracy
-            if val_acc.item() > best_val_acc:
-                best_val_acc = val_acc.item()
-                best_model_state = copy.deepcopy(model.state_dict())
-
-            # Check for early stopping
-            if early_stopping(val_loss, model, epoch):
-                break
-
-            # Monitor val_acc for pruning
-            trial.report(val_acc.item(), epoch)
+            # Monitor validation loss for pruning
+            trial.report(val_loss, epoch)
             if trial.should_prune():
                 wandb.run.summary["state"] = "pruned"
                 wandb.finish(quiet=True)
                 raise optuna.TrialPruned()
 
-        # Log best accuracy and best epoch to wandb
-        wandb.run.summary["best_val_accuracy"] = best_val_acc
-        wandb.run.summary["best_epoch"] = early_stopping.best_epoch
+            # Adjust learning rate based on validation loss
+            reduce_lr.step(val_loss)
+
+            # Check for early stopping
+            if early_stopping(val_loss, model, epoch):
+                break
+
+        # Get the number of trained epochs and the best epoch
+        trained_epochs = epoch + 1
+        best_epoch = early_stopping.best_epoch
+
+        # Evaluate the model on the validation set using the best model weights
+        model.load_state_dict(early_stopping.best_model)
+        trial_val_loss, trial_val_accuracy = trainer.evaluate_one_epoch()
+        print(f"Trial {trial.number} - "
+              f"Val Loss: {trial_val_loss:.4f}, "
+              f"Val Accuracy: {trial_val_accuracy:.4f} ")
+
+        # Check if this is the best trial so far
+        trial_best_loss = early_stopping.best_loss
+        if trial_best_loss < self.best_model_state["best_val_loss"]:
+            # Overwrite best model state with the current best
+            self.best_model_state["best_val_loss"] = trial_best_loss
+            torch.save(
+                early_stopping.best_model, self.best_model_state["path"]
+            )
+            trial.set_user_attr(
+                "best_model_path", self.best_model_state["path"]
+            )
+
+        # Set user attributes for the trial
+        trial.set_user_attr("trained_epochs", trained_epochs)
+        trial.set_user_attr("best_epoch", best_epoch)
+        trial.set_user_attr("val_loss", trial_val_loss)
+        trial.set_user_attr("val_accuracy", trial_val_accuracy)
+
+        # Log results to wandb
+        wandb.run.summary["trained_epochs"] = trained_epochs
+        wandb.run.summary["best_epoch"] = best_epoch
+        wandb.run.summary["val_loss"] = trial_val_loss
+        wandb.run.summary["val_accuracy"] = trial_val_accuracy
         wandb.run.summary["state"] = "completed"
         wandb.finish()
 
-        # Store the best accuracy and best epoch
-        trial.set_user_attr("best_val_acc", best_val_acc)
-        trial.set_user_attr("best_epoch", early_stopping.best_epoch)
-        trial.set_user_attr("best_model_state_dict", best_model_state)
-
-        print(f"Best Validation Accuracy: {best_val_acc:.4f} "
-              f"at Epoch {early_stopping.best_epoch}")
-
-        return best_val_acc
+        return trial_val_loss
