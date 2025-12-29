@@ -550,6 +550,8 @@ if __name__ == "__main__":
             "best_epochs": best_epoch,
             "trained_epochs": trained_epochs,
             "inner_model_filepath": best_model_path,
+            "val_loss": best_trial.user_attrs["val_loss"],
+            "val_accuracy": best_score,
             "test_accuracy": test_accuracy,
             "true_labels": y_test,
             "pred_probs": y_pred_probs,

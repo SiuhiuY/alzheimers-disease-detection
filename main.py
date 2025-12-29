@@ -224,6 +224,8 @@ def run_model(
                 "best_epochs": best_epochs,
                 "trained_epochs": trained_epochs,
                 "model_filepath": best_model_path,
+                "val_accuracy": best_score,
+                "val_loss": best_trial.user_attrs["val_loss"],
                 "test_accuracy": test_accuracy.item(),
                 "true_labels": y_true,
                 "pred_probs": y_pred_probs,
