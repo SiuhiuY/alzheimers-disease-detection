@@ -278,30 +278,30 @@ def objective(trial, outer_fold, X_train, y_train, X_val, y_val,
 
     # Define callbacks
     early_stopping = EarlyStopping(monitor="val_loss",
-                                   patience=15,
+                                   patience=10,
                                    restore_best_weights=True,
                                    start_from_epoch=5,
                                    verbose=0)
     reduce_lr = ReduceLROnPlateau(monitor="val_loss",
                                   factor=0.5,
-                                  patience=2,
+                                  patience=3,
                                   min_lr=1e-6,
                                   verbose=0)
 
     # Suggest hyperparameters
     params = {
-        "F1": trial.suggest_int("F1", 5, 15),
-        "D": trial.suggest_int("D", 1, 4),
+        "F1": trial.suggest_int("F1", 11, 14),
+        "D": trial.suggest_categorical("D", [1]),
         "dropoutRate": trial.suggest_categorical("dropoutRate", [0.25]),
         "kernLength": trial.suggest_categorical("kernLength", [64]),
         "dropoutType": trial.suggest_categorical(
             "dropoutType", ["Dropout"]
         ),
         "learning_rate": trial.suggest_float(
-            "learning_rate", 3e-5, 5e-4, log=True),
+            "learning_rate", 5e-5, 8e-5, log=True),
         "optimizer": trial.suggest_categorical(
             "optimizer", ["adam"]),
-        "batch_size": trial.suggest_categorical("batch_size", [32, 64, 128])
+        "batch_size": trial.suggest_categorical("batch_size", [64, 128])
         }
 
     # Initialise wandb logging for monitoring learning process
@@ -323,7 +323,7 @@ def objective(trial, outer_fold, X_train, y_train, X_val, y_val,
         history = model.fit(X_train, y_train,
                             validation_data=(X_val, y_val),
                             batch_size=params["batch_size"],
-                            epochs=50,
+                            epochs=30,
                             # class_weight=calculate_class_weights(y_train),
                             callbacks=[
                                 # monitor validation loss after each epoch
@@ -444,9 +444,6 @@ if __name__ == "__main__":
         outer_cv.split(X_all, y_all, groups=subjects_all)
     ):
         print(f"\n--- Outer Fold {outer_fold + 1} ---")
-        print(f"Train/Val size: {len(train_val_idx)}, "
-              f"Test size: {len(test_idx)}")
-        print(f"Test Subject ID: {subjects_all[test_idx][0]}")
 
         # Split train/validation and test sets
         X_train_val, y_train_val, subjects_train_val = (
@@ -465,6 +462,7 @@ if __name__ == "__main__":
         train_idx, val_idx = next(single_split.split(
             X_train_val, y_train_val, groups=subjects_train_val
         ))
+
         print(f"Inner Train size: {len(train_idx)}, "
               f"Validation size: {len(val_idx)}")
 
@@ -491,7 +489,7 @@ if __name__ == "__main__":
         best_model_state = {
             "best_val_loss": float("inf"),
             "path": os.path.join(
-                result_dir, f"best_model_outer_fold_{outer_fold + 1}.keras"
+                result_dir, f"best_model_outer_fold_{outer_fold+1}.keras"
             )
         }
 
@@ -510,7 +508,7 @@ if __name__ == "__main__":
                 trial, outer_fold, X_train, y_train, X_val, y_val,
                 best_model_state, num_classes, chans, samples, class_names
                 ),
-            n_trials=10)
+            n_trials=12)
 
         # Save study object
         study_filepath = os.path.join(
@@ -526,7 +524,6 @@ if __name__ == "__main__":
         best_epoch = best_trial.user_attrs["best_epoch"]
         trained_epochs = best_trial.user_attrs["trained_epochs"]
 
-        print(f"\n--- Outer Fold {outer_fold + 1} Results ---")
         print(f"Best validation accuracy: {best_score:.4f}")
         print("Best hyperparameters: ")
         for key, value in best_params.items():
@@ -544,8 +541,8 @@ if __name__ == "__main__":
         # Store outer fold results
         fold_result = {
             "outer_fold": outer_fold + 1,
-            "best_trial_number": best_trial.number,
             "test_subject_id": test_subject_id,
+            "best_trial_number": best_trial.number,
             "best_params": best_params,
             "best_epochs": best_epoch,
             "trained_epochs": trained_epochs,
