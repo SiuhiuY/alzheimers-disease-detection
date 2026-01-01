@@ -290,7 +290,7 @@ def objective(trial, outer_fold, X_train, y_train, X_val, y_val,
 
     # Suggest hyperparameters
     params = {
-        "F1": trial.suggest_int("F1", 11, 14),
+        "F1": trial.suggest_int("F1", 12, 14),
         "D": trial.suggest_categorical("D", [1]),
         "dropoutRate": trial.suggest_categorical("dropoutRate", [0.25]),
         "kernLength": trial.suggest_categorical("kernLength", [64]),
@@ -298,10 +298,10 @@ def objective(trial, outer_fold, X_train, y_train, X_val, y_val,
             "dropoutType", ["Dropout"]
         ),
         "learning_rate": trial.suggest_float(
-            "learning_rate", 5e-5, 8e-5, log=True),
+            "learning_rate", 5e-5, 7e-5, log=True),
         "optimizer": trial.suggest_categorical(
             "optimizer", ["adam"]),
-        "batch_size": trial.suggest_categorical("batch_size", [64, 128])
+        "batch_size": trial.suggest_categorical("batch_size", [128])
         }
 
     # Initialise wandb logging for monitoring learning process
@@ -323,7 +323,7 @@ def objective(trial, outer_fold, X_train, y_train, X_val, y_val,
         history = model.fit(X_train, y_train,
                             validation_data=(X_val, y_val),
                             batch_size=params["batch_size"],
-                            epochs=30,
+                            epochs=50,
                             # class_weight=calculate_class_weights(y_train),
                             callbacks=[
                                 # monitor validation loss after each epoch
@@ -388,7 +388,7 @@ if __name__ == "__main__":
     AD_CN = {"A": 1, "C": 0}
     FTD_CN = {"F": 1, "C": 0}
     AD_FTD = {"A": 1, "F": 0}
-    label_map = AD_CN
+    label_map = FTD_CN
     model_name = f"EEGNet_{'_'.join(label_map.keys())}"
     num_classes = 1  # Binary classification
     class_names = [
