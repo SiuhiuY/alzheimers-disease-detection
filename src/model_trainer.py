@@ -147,10 +147,10 @@ class ModelTrainer:
                 pred_probs = torch.sigmoid(outputs)
                 preds = (pred_probs >= self.threshold).float()
 
-                # Move to CPU to save the results
-                y_pred_probs.extend(pred_probs.cpu().numpy())
-                y_preds.extend(preds.cpu().numpy())
-                y_labels.extend(labels.cpu().numpy())
+                # Flatten and move to CPU to save the results
+                y_pred_probs.extend(pred_probs.view(-1).cpu().numpy())
+                y_preds.extend(preds.view(-1).cpu().numpy())
+                y_labels.extend(labels.view(-1).cpu().numpy())
 
         return {
             "y_pred_probs": y_pred_probs,

@@ -153,7 +153,7 @@ def run_model(
             )
 
             study.optimize(
-                lambda trial: objective(trial), n_trials=10)
+                lambda trial: objective(trial), n_trials=18)
 
             # Save the study
             study_filepath = os.path.join(
@@ -194,7 +194,7 @@ def run_model(
                 train_transform=train_transform,
                 batch_size=best_batch_size, shuffle=True
             )
-            test_subject_id = subjects[test_idx]
+            test_subject_id = subjects[test_idx][0]
 
             # Create trainer for best model
             best_trainer = ModelTrainer(best_model,
@@ -209,9 +209,9 @@ def run_model(
             # Evaluate on the test set
             _, test_accuracy = best_trainer.evaluate_one_epoch()
             predictions = best_trainer.predict()
-            y_pred_probs = predictions["y_pred_probs"]
-            y_pred = predictions["y_pred"]
-            y_true = predictions["y_true"]
+            y_pred_probs = np.array(predictions["y_pred_probs"])
+            y_pred = np.array(predictions["y_pred"])
+            y_true = np.array(predictions["y_true"])
             print(f"Outer Fold {outer_fold + 1} Test Accuracy: "
                   f"{test_accuracy:.4f}")
 
@@ -223,10 +223,10 @@ def run_model(
                 "best_params": best_params,
                 "best_epochs": best_epochs,
                 "trained_epochs": trained_epochs,
-                "model_filepath": best_model_path,
-                "val_accuracy": best_score,
+                "model_filepath": str(best_model_path),
+                "val_accuracy": best_score.cpu().item(),
                 "val_loss": best_trial.user_attrs["val_loss"],
-                "test_accuracy": test_accuracy.item(),
+                "test_accuracy": test_accuracy.cpu().item(),
                 "true_labels": y_true,
                 "pred_probs": y_pred_probs,
                 "pred_labels": y_pred
@@ -277,6 +277,6 @@ if __name__ == "__main__":
         outer_cv_strategy='loso',
         inner_cv_strategy=None,  # inner single train / val split
         use_class_weights=False,
-        train_transform=train_transform,
+        train_transform=None,
         seed=RANDOM_SEED
     )
