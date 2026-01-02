@@ -57,6 +57,9 @@ class EEGProcessor:
         if not os.path.exists(full_path):
             raise FileNotFoundError(f"File {full_path} does not exist.")
         self.raw = mne.io.read_raw_eeglab(full_path, preload=True)
+        data = self.raw.get_data()
+        data_uv = data * 1e6  # Scale to microvolts
+        self.raw._data = data_uv  # Update the raw data
         return self.raw
 
     def epoch_data(self, duration=1.0, overlap=0.0):
@@ -244,10 +247,10 @@ if __name__ == "__main__":
     # processor.compute_band_psd()
     values = processor.compute_relative_band_power(band="alpha")
     print("Relative alpha band power shape:", values.shape)
-    print(values.mean())
-    print(values.std())
-    print(values.min())
-    print(values.max())
+    print("mean:", values.mean())
+    print("std:", values.std())
+    print("min:", values.min())
+    print("max:", values.max())
     print(values[0])
     print(values[:, 0])
 
