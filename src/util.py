@@ -70,6 +70,34 @@ def min_max_normalise(features, train_indices, test_indices):
     return train_features, test_features
 
 
+def zscore_normalise(features, train_indices, test_indices):
+    """Apply Z-score normalisation based on training data.
+
+    Args:
+        features (np.ndarray): Feature data.
+        train_indices (list or np.ndarray): Indices of training samples.
+        test_indices (list or np.ndarray): Indices of testing samples.
+
+    Raises:
+        ValueError: If training data is not approximately zero-mean/unit-std.
+
+    Returns:
+        tuple: Normalised (train_features, test_features).
+    """
+    train_features = features[train_indices]
+    test_features = features[test_indices]
+
+    # Compute mean and std over training data only
+    train_mean = train_features.mean()
+    train_std = train_features.std()
+
+    eps = 1e-8  # avoid division by zero
+    train_features = (train_features - train_mean) / (train_std + eps)
+    test_features = (test_features - train_mean) / (train_std + eps)
+
+    return train_features, test_features
+
+
 def calculate_class_weights(labels):
     """Calculate class weights to handle class imbalance.
 
@@ -130,8 +158,8 @@ def get_data_loaders(features, labels, subjects,
         shuffle (bool, optional): Whether to shuffle training data.
     """
 
-    # Apply min_max normalisation
-    train_features, test_features = min_max_normalise(
+    # Apply z-score normalisation
+    train_features, test_features = zscore_normalise(
         features, train_indices, test_indices
     )
     train_set = EEGDataset(
