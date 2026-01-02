@@ -116,6 +116,29 @@ class EEGProcessor:
         self.band_psd = self.psds[:, :, mask].mean(axis=-1)
         return self.band_psd
 
+    def compute_relative_band_power(self, band="alpha"):
+        """Compute relative band power from PSD.
+
+        Args:
+            band (str): Frequency band of interest.
+
+        Returns:
+            np.ndarray: Relative band power values.
+        """
+        # Compute total power across whole frequency range
+        total_power = self.psds.sum(axis=-1)
+
+        # Get frequency band mask
+        fmin, fmax = self.VALID_BANDS.get(band)
+        mask = (self.freqs >= fmin) & (self.freqs <= fmax)
+
+        # Compute band power
+        band_power = self.psds[:, :, mask].sum(axis=-1)
+
+        # Relative band power
+        self.band_psd = band_power / (total_power + 1e-8)
+        return self.band_psd
+
     def map_channel_locations(self):
         """Map EEG channel locations to a 5x5 grid.
 
@@ -218,9 +241,19 @@ if __name__ == "__main__":
     processor.load_data()
     processor.epoch_data()
     processor.compute_psd()
-    processor.compute_band_psd()
-    processor.map_channel_locations()
-    processor.interpolate()
-    sliding_windows = processor.sliding_window(window_size=4)
-    print(processor)
-    print("Sliding windows shape:", sliding_windows.shape)
+    # processor.compute_band_psd()
+    values = processor.compute_relative_band_power(band="alpha")
+    print("Relative alpha band power shape:", values.shape)
+    print(values.mean())
+    print(values.std())
+    print(values.min())
+    print(values.max())
+    print(values[0])
+    print(values[:, 0])
+
+    # processor.map_channel_locations()
+    # processor.interpolate()
+    # sliding_windows = processor.sliding_window(window_size=4)
+    # print(processor)
+    # print("Sliding windows shape:", sliding_windows.shape)
+    # print(self.band_psd.)

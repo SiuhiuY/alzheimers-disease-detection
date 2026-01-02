@@ -18,7 +18,7 @@ class SubjectProcessor:
         subject_dirs (list): List of subject directory paths.
         band_name (str): Frequency band of interest."""
 
-    def __init__(self, data_dir):
+    def __init__(self, data_dir, feature_type="psd"):
         """Initialize the SubjectProcessor.
         """
         self.DATA_DIR = data_dir
@@ -30,6 +30,7 @@ class SubjectProcessor:
 
         self.subject_dirs = []
         self.band_name = None
+        self.feature_type = feature_type
 
     def __repr__(self):
         """String representation of the SubjectProcessor.
@@ -130,7 +131,10 @@ class SubjectProcessor:
         processor.load_data()
         processor.epoch_data()
         processor.compute_psd()
-        processor.compute_band_psd(band=self.band_name)
+        if self.feature_type == "psd":
+            processor.compute_band_psd(band=self.band_name)
+        if self.feature_type == "relative":
+            processor.compute_relative_band_power(band=self.band_name)
         processor.map_channel_locations()
         processor.interpolate()
         sliding_windows = processor.sliding_window(
@@ -155,7 +159,7 @@ class SubjectProcessor:
 if __name__ == "__main__":
     ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(ROOT_DIR, "..", "data")
-    processor = SubjectProcessor(data_dir)
+    processor = SubjectProcessor(data_dir, feature_type="psd")
     processor.find_all_subjects()
     print("Found subjects:", len(processor.subject_dirs))
     processor.choose_band(band_name="alpha")
