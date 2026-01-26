@@ -1,0 +1,25 @@
+name: thesis
+channels:
+  - defaults
+  - https://repo.anaconda.com/pkgs/main
+  - https://repo.anaconda.com/pkgs/r
+  - https://repo.anaconda.com/pkgs/msys2
+dependencies:
+  - scikit-learn=1.7.2
+  - pytorch-cuda=12.1
+  - scipy
+  - seaborn
+  - opencv
+  - optuna
+  - torchaudio
+  - torchvision
+  - wandb
+  - pandas
+  - jupyterlab
+  - python=3.11
+  - pytest
+  - numpy
+  - scikit-image
+  - imageio
+  - torchmetrics
+prefix: C:\Users\xiaox\anaconda3\envs\thesis
