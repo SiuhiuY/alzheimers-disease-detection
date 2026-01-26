@@ -1,0 +1,13 @@
+name: thesis-tf
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - conda-forge::numpy
+  - conda-forge::matplotlib
+  - conda-forge::pandas
+  - conda-forge::scikit-learn
+  - conda-forge::wandb
+  - conda-forge::optuna
+  - libstdcxx-ng
+prefix: /home/u961155/.conda/envs/thesis-tf

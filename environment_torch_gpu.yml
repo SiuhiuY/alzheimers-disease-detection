@@ -1,0 +1,7 @@
+name: thesis_pytorch
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+  - ipykernel
+prefix: /home/u961155/.conda/envs/thesis_pytorch
