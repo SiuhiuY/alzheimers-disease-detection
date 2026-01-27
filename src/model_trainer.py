@@ -77,7 +77,9 @@ class ModelTrainer:
             self.optimizer.step()
 
             # Update running loss
-            running_loss += loss.item()
+            # Total loss for the batch
+            # * features.size(0): not assuming equal batch sizes
+            running_loss += loss.item() * features.size(0)
             # Apply sigmoid to get predicted probabilities
             pred_probs = torch.sigmoid(outputs)
             # Transform into predicted class labels
@@ -86,7 +88,8 @@ class ModelTrainer:
             acc.update(preds, labels.view(-1, 1))
 
         # Compute average loss and accuracy for the epoch
-        train_loss = running_loss / len(self.train_loader)
+        # .dataset: get the total number of samples
+        train_loss = running_loss / len(self.train_loader.dataset)
         train_acc = acc.compute()
         acc.reset()
 
@@ -115,13 +118,13 @@ class ModelTrainer:
 
                 outputs = self.model(features)
                 loss = self.criterion(outputs, labels.view(-1, 1))
-                running_loss += loss.item()
+                running_loss += loss.item() * features.size(0)
 
                 pred_probs = torch.sigmoid(outputs)
                 preds = (pred_probs >= self.threshold).float()
                 acc.update(preds, labels.view(-1, 1))
 
-        eval_loss = running_loss / len(self.eval_loader)
+        eval_loss = running_loss / len(self.eval_loader.dataset)
         eval_acc = acc.compute()
         acc.reset()
 
