@@ -9,6 +9,9 @@ import torch.nn as nn
 import torchvision.transforms as T
 from src.feature_loader import load_features
 from src.models.optuna_cnn import OptunaCNN
+from src.models.pretrained_adaptive import (
+    PretrainedAlexNet, PretrainedResNet18, PretrainedVGG16
+)
 from src.cross_validation import CrossValidator
 from src.model_trainer import ModelTrainer
 from src.model_tuner import Objective
@@ -257,18 +260,12 @@ if __name__ == "__main__":
     band = "alpha"
     num_classes = 1  # Binary classification
 
-    # Define training configuration
-    train_transform = T.Compose([
-        T.RandomHorizontalFlip(),
-        T.RandomVerticalFlip(),
-        T.RandomRotation(45)
-    ])
     RANDOM_SEED = 123
     n_epochs = 50
 
     # Run the model training
     run_model(
-        OptunaCNN,
+        PretrainedResNet18,
         label_map=label_map,
         n_splits=None,
         test_size=0.2,
