@@ -147,7 +147,7 @@ class PretrainedResNet18(nn.Module):
         hidden_units = trial.suggest_categorical(
             "resnet_fc_units", [64, 128]
             )
-        dropout_rate = trial.suggest_float("resnet_fc_dropout", 0.3, 0.45)
+        dropout_rate = trial.suggest_float("resnet_fc_dropout", 0.1, 0.5)
 
         # Replace the classifier with a new fully connected layer
         in_features = self.backbone.fc.in_features
