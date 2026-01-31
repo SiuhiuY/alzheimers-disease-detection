@@ -101,9 +101,9 @@ class PretrainedVGG16(nn.Module):
 
         # Get hyperparameters for the fully connected layer
         hidden_units = trial.suggest_categorical(
-            "vgg_fc_units", [64, 128, 256]
+            "vgg_fc_units", [256]
             )
-        dropout_rate = trial.suggest_float("vgg_fc_dropout", 0.1, 0.5)
+        dropout_rate = trial.suggest_float("vgg_fc_dropout", 0.1297, 0.2029)
 
         # Replace the classifier with a new fully connected layer
         in_features = base_model.classifier[0].in_features

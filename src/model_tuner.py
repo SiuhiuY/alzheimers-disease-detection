@@ -73,16 +73,16 @@ class Objective(object):
         """
         # Suggest optimiser and learning rate
         optimizer_name = trial.suggest_categorical(
-            "optimizer", ["Adam", "AdamW", "RMSprop"]
+            "optimizer", ["AdamW"]
         )
         learning_rate = trial.suggest_float(
-            "learning_rate", 1e-5, 1e-3, log=True
+            "learning_rate", 1.1e-5, 1.7e-5, log=True
         )
         weight_decay = trial.suggest_float(
-            "weight_decay", 1e-6, 1e-3, log=True
+            "weight_decay", 1e-6, 6e-6, log=True
         )
         batch_size = trial.suggest_categorical(
-            "batch_size", [32, 64, 128, 256]
+            "batch_size", [128]
         )
 
         # Intialise wandb for this trial
@@ -90,7 +90,7 @@ class Objective(object):
         classes_str = '_'.join(self.class_names)
 
         wandb.init(
-            project=f"EEG_Classification_2D_{self.band}_{classes_str}_v2",
+            project=f"EEG_Classification_2D_{self.band}_{classes_str}_v1",
             name=f"Outer_Fold_{self.outer_fold + 1}_Trial_{trial.number}",
             config=wandb_config,
             group=f"Outer_Fold_{self.outer_fold + 1}",
