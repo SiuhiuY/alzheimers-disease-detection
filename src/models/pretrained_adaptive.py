@@ -53,9 +53,9 @@ class PretrainedAlexNet(nn.Module):
 
         # Get hyperparameters for the fully connected layer
         hidden_units = trial.suggest_categorical(
-            "alexnet_fc_units", [128]
+            "alexnet_fc_units", [64, 128, 256]
             )
-        dropout_rate = trial.suggest_float("alexnet_fc_dropout", 0.17, 0.47)
+        dropout_rate = trial.suggest_float("alexnet_fc_dropout", 0.27, 0.46)
 
         # Replace the classifier with a new fully connected layer
         # .classifier[1] is the first nn.linear layer
