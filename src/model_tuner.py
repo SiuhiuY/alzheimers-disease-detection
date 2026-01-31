@@ -76,13 +76,13 @@ class Objective(object):
             "optimizer", ["Adam"]
         )
         learning_rate = trial.suggest_float(
-            "learning_rate", 1.1e-5, 1.5e-5, log=True
+            "learning_rate", 1.3e-5, 2.8e-5, log=True
         )
         weight_decay = trial.suggest_float(
-            "weight_decay", 2e-6, 6e-6, log=True
+            "weight_decay", 1e-6, 9.05e-4, log=True
         )
         batch_size = trial.suggest_categorical(
-            "batch_size", [256]
+            "batch_size", [128]
         )
 
         # Intialise wandb for this trial
