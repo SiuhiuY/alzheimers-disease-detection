@@ -71,9 +71,9 @@ def calculate_all_metrics(results):
     all_y_prob = []
 
     for fold in results["outer_folds"]:
-        all_y_true.extend(fold["test_true_labels"])
-        all_y_pred.extend(fold["test_pred_labels"])
-        all_y_prob.extend(fold["test_pred_probs"])
+        all_y_true.extend(fold["true_labels"])
+        all_y_pred.extend(fold["pred_labels"])
+        all_y_prob.extend(fold["pred_probs"])
 
     all_y_true = np.array(all_y_true)
     all_y_pred = np.array(all_y_pred)
