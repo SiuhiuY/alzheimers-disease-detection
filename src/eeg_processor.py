@@ -57,9 +57,7 @@ class EEGProcessor:
         if not os.path.exists(full_path):
             raise FileNotFoundError(f"File {full_path} does not exist.")
         self.raw = mne.io.read_raw_eeglab(full_path, preload=True)
-        data = self.raw.get_data()
-        data_uv = data * 1e6  # Scale to microvolts
-        self.raw._data = data_uv  # Update the raw data
+
         return self.raw
 
     def epoch_data(self, duration=1.0, overlap=0.0):
@@ -128,6 +126,8 @@ class EEGProcessor:
         Returns:
             np.ndarray: Relative band power values.
         """
+        self.psds *= 1e12  # Convert to µV²/Hz
+
         # Compute total power across whole frequency range
         total_power = self.psds.sum(axis=-1)
 

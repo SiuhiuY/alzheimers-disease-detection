@@ -159,7 +159,7 @@ class SubjectProcessor:
 if __name__ == "__main__":
     ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(ROOT_DIR, "..", "data")
-    processor = SubjectProcessor(data_dir, feature_type="psd")
+    processor = SubjectProcessor(data_dir, feature_type="relative")
     processor.find_all_subjects()
     print("Found subjects:", len(processor.subject_dirs))
     processor.choose_band(band_name="alpha")
