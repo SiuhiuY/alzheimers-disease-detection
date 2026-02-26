@@ -136,16 +136,3 @@ python eegnet_baseline.py
 python main.py
 ```
 
-## Requirements
-```bash
-python==3.10
-torch==2.1.0
-torchmetrics==1.2.0
-numpy==1.26.4
-mne==1.7.0
-scikit-learn==1.3.0
-matplotlib==3.8.0
-```
-
-## Support
-For any issue, please contact .
