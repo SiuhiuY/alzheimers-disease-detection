@@ -1,37 +1,51 @@
-# Master Thesis - Data Science & Society
-
 ## Project Title
 Alzheimer's Disease Detection Using EEG Topographic Images
 
 ---
 
 ## Project Overview
-The project explores feature representation for EEG-based Alzheimer's Disease detection, comparing 1D raw EEG signal features with 2D topographic image-like features derived from EEG signals. Both representations are evaluated using on Convolutional Neural Network-based architectures. 
+The project explores feature representation for EEG-based Alzheimer's Disease detection, comparing **1D raw EEG signals** with **2D topographic image-like representations** derived from EEG signals. Both representations are evaluated using CNN-based architectures.
 
-The goal is to evaluate whether representing EEG signals with explicit spatial mapping improves classification performance. The repo implements image feature extraction, nested cross-validation and model comparison. 
+The central question is whether representing EEG signals with **explicit spatial mapping** improves classification performance. To address this, the repository implements:
+- EEG signal-to-image feature contruction
+- Nested Leave-One-Subject-Out cross-validation
+- Model comparison
+
+## Problem Statement
+Alzheimer's Disease (AD) is a major neurological disorders affecting over 57 million people worldwide. Current diagnostic methods — such as MRI, PET scans, cerebrospinal fluid biomarkers — are costly, invasive, or not widely accessible. EEG offers a non-invasive, affordable, and widely available alternative. However, no formally recognised EEG biomarkers for AD detection currently exist.
+
+The project focuses on the following challenges:
+- **Spatial nature of AD pathology:** AD disrupts inter-neuron connections in spatially distributed patterns, suggesting spatial EEG features may contain useful diagnostic information.
+- **Uncertainty in feature representation:** Deep learning is widely used in EEG-based AD detection due to its ability to automatically extract features. However, the lack of large-scale public datasets makes it difficult to develop specialised models. As a result, EEG signals are often transformed to align with architecures from more mature fields, such as computer vision and natural langugage processing. The optimal feature representation for deep learning models remains unclear.
+- **Limited data and generalisability:** Clinical EEG datasets are typically small, making it difficult to train robust models and raises concerns about model's generalisation.
+
+## Methods
+
 
 ## Repository Structure
 ```
 THESIS_CODES/
 │
 ├── data/                                # data folder
+|
+├── docs/                                # Flowcharts
 │
-├── jobs/
-│   └── eeg_prep_gpu.sh                  # GPU job submission scripts
+├── notebooks/                           # EDA, feature analysis and model comparison
 │
-├── notebooks/                  
-│   ├── eda.ipynb                        # Explore EEG signals with MNE library
-│   ├── image.ipynb                      # Present the image feature
-│   └── results.ipynb                    # Post-training analysis
+├── scripts/
+│   └── baseline.sh                      # GPU job submission scripts
 │
 ├── src/
 │   ├── models/                          # Model files directory
+│   ├── calculate_results.py             # Compute evaluation metrics
+│   ├── callback.py                      # Training callbacks (early stopping)
+│   ├── cross_validation.py              # Cross-validation logic
 │   ├── dataset.py                       # Custom PyTorch dataset
-│   ├── eeg_processor.py                 # Transform signals into images for a single subject
+│   ├── eeg_processor.py                 # Transform signals into images (single subject)
 │   ├── feature_loader.py                # Load image feature and synchronise with labels
 │   ├── model_trainer.py                 # Train, evaluate and predict
 │   ├── model_tuner.py                   # Hyperparameter tuning
-│   ├── subject_processor.py             # Image transformation for all subjects
+│   ├── subject_processor.py             # Image transformation (all subjects)
 │   ├── util.py                          # Helper functions
 │   └── __init__.py
 │
@@ -40,7 +54,6 @@ THESIS_CODES/
 │   ├── test_subject.py                  # Test subject_processor.py
 │   └── __init__.py
 │
-├── cross_validation.py                  # Nested cross validation
 ├── eegnet_baseline.py                   # 1D EEG signal feature training pipeline
 ├── experiment.py                        # Single train/test split for quick model behaviour check
 ├── main.py                              # 2D image feature training pipeline
@@ -56,7 +69,19 @@ THESIS_CODES/
 ## Dataset
 Dataset is publicly available on OpenNeuro: https://openneuro.org/datasets/ds004504/versions/1.0.7. 
 
-Resting-state eyes-closed EEG recordings with 19 channels at 500Hz sampling rate. The subject groups include Alzheimer's Disease, Frontaltemporal Dementia, and healthy controls. 
+Resting-state eyes-closed EEG recordings with 19 channels at 500Hz sampling rate. The subject groups include Alzheimer's Disease (AD), Frontaltemporal Dementia (FTD), and healthy controls (CN). 
+
+## Results
+
+### Summary
+
+- EEGNet with 1D features consistently outperformed other models, with an AUROC of 0.82 in Alzheimer's Disease classification, balanced sensitivity and specificity, as well as unbiased prediction between male and female subjects. 
+- Frontotemporal dementia proved a challenging dementia type for all models. 
+- Frenquency band analysis revealed Delta and Alpha bands to be the most informative for Azheimer's Disease; no single band yielded strong results for Frontotemporal dementia. 
+- Subject-level analysis showed considerable inter-subject variability. 
+- SHAP-based explainability revealed discriminative spatial patterns for Alzheimer's Disease but not for Frontotemporal dementia. 
+
+
 
 ## Usage
 
@@ -136,3 +161,7 @@ python eegnet_baseline.py
 python main.py
 ```
 
+## Future Direction
+
+
+## References
