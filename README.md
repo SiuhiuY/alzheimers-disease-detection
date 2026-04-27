@@ -85,10 +85,39 @@ Resting-state eyes-closed EEG recordings with 19 channels at 500Hz sampling rate
 
 ## Usage
 
-### Dataset Download 
-Download the dataset at https://openneuro.org/datasets/ds004504/versions/1.0.7/download. 
+### Dataset Download
+Run the following command from the project root:
+```
+./scripts/download_data.sh
+```
+This will automatically:
+- create the ```data/``` directory
+- execute the official OpenNeuro download script
+- download the dataset into ```data/```
 
-Choose a root directory when prompted and create a subfolder named ```data```. 
+After running the download, the dataset will be stored as:
+```
+├── data/
+│   ├── ds004504-1.0.8/                  # data version
+│   │   ├── derivatives/                 # Preprocessed data
+│   │   │   ├── sub-001/                 # 1st subject
+│   │   │   │    └── eeg/
+│   │   │   │        └── sub-001_task-eyesclosed_eeg.set
+|   |   |   ├─ ...
+│   │   │   └── sub-088/
+│   │   ├── sub-001/                     # Unprocessed EEG recordings
+│   │   │   └── eeg/
+│   │   │       ├── sub-001_task-eyesclosed_channels.tsv
+│   │   │       ├── sub-001_task-eyesclosed_eeg.json
+│   │   │       └── sub-001_task-eyesclosed_eeg.set
+│   │   ├── ...
+│   │   ├── sub-088/
+│   │   ├── CHANGES
+│   │   ├── dataset_description.json  
+│   │   ├── participants.json            # Meta data mapping dictionary
+│   │   ├── participants.tsv             # Meta data by each subject
+│   │   └── README                       # Dataset description
+```
 
 ### Image Extraction 
 To extract images from the EEG signals, run:
@@ -104,44 +133,6 @@ processor.choose_window_size(window_size=4)
 The images will be saved under a folder name which corresponds to the band name of your choice under ```/data/features/```. 
 
 By implementing the above two steps, your data repository will be arranged as below: 
-
-```
-├── data/
-│   ├── derivatives/                      # Preprocessed EEG signals directory
-│   │   ├── sub-001/
-│   │   │   └── eeg/
-│   │   │       └── sub-001_task-eyesclosed_eeg.set
-│   │   ├── sub-002/
-│   │   ├── sub-003/
-│   │   ├── ...
-│   │   ├── sub-086/
-│   │   ├── sub-087/
-│   │   └── sub-088/
-│   │
-│   ├── features/                        # 2D image features directory
-│   │   ├── alpha/
-│   │   │       └── sub-001_alpha_psd.npy
-│   │   └── ...
-│   │
-│   ├── raw/                             # Unprocessed EEG signals directory
-│   │   ├── sub-001/
-│   │   │   └── eeg/
-│   │   │       ├── sub-001_task-eyesclosed_channels.tsv
-│   │   │       ├── sub-001_task-eyesclosed_eeg.json
-│   │   │       └── sub-001_task-eyesclosed_eeg.set
-│   │   ├── sub-002/
-│   │   ├── sub-003/
-│   │   ├── ...
-│   │   ├── sub-086/
-│   │   ├── sub-087/
-│   │   └── sub-088/
-│   │
-│   ├── CHANGES
-│   ├── dataset_description.json        
-│   ├── participants.json                # Meta data mapping dictionary
-│   └── participants.tsv                 # Meta data by each subject
-│   └── README                           # Dataset description
-```
 
 To test for image extraction steps in ```eeg_processor.py``` and ```subject_processor.py```, run: 
 ```
