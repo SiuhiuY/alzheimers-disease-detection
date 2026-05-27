@@ -86,7 +86,7 @@ Resting-state eyes-closed EEG recordings with 19 channels at 500Hz sampling rate
 The spatial patterns learned in the 1D EENNet model were visualised by extracting learned spatial filters from the depthwise convolution layer.
 
 <p align="center">
-  <img src="docs/EEGNET_AD_CN_filter_1.png" width="200">
+  <img src="docs/EEGNet_AD_CN_filter_1.png" width="200">
 </p>
 
 <p align="center">
