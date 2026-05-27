@@ -1,21 +1,21 @@
-## Project Title
-Alzheimer's Disease Detection Using EEG Topographic Images
+# Alzheimer's Disease Detection Using EEG Topographic Images
 
 ---
 
-## Project Overview
-The project explores feature representation for EEG-based Alzheimer's Disease detection, comparing **1D raw EEG signals** with **2D topographic image-like representations** derived from EEG signals. Both representations are evaluated using CNN-based architectures.
+## Overview
+The project investigated feature representations for EEG-based Alzheimer's Disease detection, comparing **1D raw signals** with **2D image-like representations** derived from EEG signals. Both representations are evaluated using CNN-based architectures.
 
-The central question is whether representing EEG signals with **explicit spatial mapping** improves classification performance. To address this, the repository implements:
-- EEG signal-to-image feature contruction
+The main question is whether representing EEG signals with **explicit spatial mapping** can improve classification performance and provide better explainability. To address this, the project implemented:
+- EEG signal-to-image feature transformation
 - Nested Leave-One-Subject-Out cross-validation
 - Model comparison
 
 ## Problem Statement
-Alzheimer's Disease (AD) is a major neurological disorders affecting over 57 million people worldwide. Current diagnostic methods — such as MRI, PET scans, cerebrospinal fluid biomarkers — are costly, invasive, or not widely accessible. EEG offers a non-invasive, affordable, and widely available alternative. However, no formally recognised EEG biomarkers for AD detection currently exist.
+Alzheimer's Disease (AD) is a major neurological disorder affecting over 57 million people worldwide, with the majority of cases happening in less developped regions. Electroencephalography (EEG) offers an alternative for non-invasive, affordable, and widely-available clinical diagnosis. 
 
-The project focuses on the following challenges:
-- **Spatial nature of AD pathology:** AD disrupts inter-neuron connections in spatially distributed patterns, suggesting spatial EEG features may contain useful diagnostic information.
+Challenges in EEG-based AD detection: 
+- **Noisy, non-linear, non-stationary signals:** Currently no formally recognised EEG biomarkers for AD detection. 
+- **Spatial nature of AD pathology:** AD disrupts inter-neuron connections in spatially distributed patterns, while EEG signals are rich in temporal information.
 - **Uncertainty in feature representation:** Deep learning is widely used in EEG-based AD detection due to its ability to automatically extract features. However, the lack of large-scale public datasets makes it difficult to develop specialised models. As a result, EEG signals are often transformed to align with architecures from more mature fields, such as computer vision and natural langugage processing. The optimal feature representation for deep learning models remains unclear.
 - **Limited data and generalisability:** Clinical EEG datasets are typically small, making it difficult to train robust models and raises concerns about model's generalisation.
 
@@ -74,14 +74,92 @@ Resting-state eyes-closed EEG recordings with 19 channels at 500Hz sampling rate
 ## Results
 
 ### Summary
-
 - EEGNet with 1D features consistently outperformed other models, with an AUROC of 0.82 in Alzheimer's Disease classification, balanced sensitivity and specificity, as well as unbiased prediction between male and female subjects. 
 - Frontotemporal dementia proved a challenging dementia type for all models. 
 - Frenquency band analysis revealed Delta and Alpha bands to be the most informative for Azheimer's Disease; no single band yielded strong results for Frontotemporal dementia. 
 - Subject-level analysis showed considerable inter-subject variability. 
 - SHAP-based explainability revealed discriminative spatial patterns for Alzheimer's Disease but not for Frontotemporal dementia. 
 
+### Explainability
 
+#### EEGNet spatial filters
+The spatial patterns learned in the 1D EENNet model were visualised by extracting learned spatial filters from the depthwise convolution layer.
+
+<p align="center">
+  <img src="docs/EEGNET_AD_CN_filter_1.png" width="200">
+</p>
+
+<p align="center">
+  <i>Example EEGNet spatial filter topomap.</i>
+</p>
+
+#### 2D model SHAP explainability
+For the 2D models, SHAP was applied to representative subjects from the AD vs. CN and FTD vs. CN classification tasks to visualise the contribution of spatial regions to model predictions.
+
+##### AD vs. CN
+
+For AD vs. CN, clearer spatial patterns and larger SHAP magnitudes were observed. Positive SHAP values (red) indicate regions contributing toward the AD prediction, while negative values (blue) indicate regions contributing away from the AD class. Some subjects exhibited concentrated high-value regions, suggesting that the model identified meaningful localised EEG patterns.
+
+<div align="center">
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/AD_CN_sub-001.png" width="260"><br>
+      <b>Example AD patient</b>
+    </td>
+    <td align="center">
+      <img src="docs/AD_CN_sub-016.png" width="260"><br>
+      <b>Example AD patient</b>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/AD_CN_sub-056.png" width="260"><br>
+      <b>Example healthy control</b>
+    </td>
+    <td align="center">
+      <img src="docs/AD_CN_sub-061.png" width="260"><br>
+      <b>Example healthy control</b>
+    </td>
+  </tr>
+</table>
+
+<i>SHAP value visualisations for representative AD vs. CN subjects.</i>
+
+</div>
+
+##### FTD vs. CN
+In contrast, the FTD vs. CN task showed lower SHAP magnitudes and more scattered feature importance distributions, indicating less consistent spatial patterns contributing to model predictions.
+
+<div align="center">
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/FTD_CN_sub-056.png" width="260"><br>
+      <b>Example healthy control</b>
+    </td>
+    <td align="center">
+      <img src="docs/FTD_CN_sub-061.png" width="260"><br>
+      <b>Example healthy control</b>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/FTD_CN_sub-071.png" width="260"><br>
+      <b>Example FTD patient</b>
+    </td>
+    <td align="center">
+      <img src="docs/FTD_CN_sub-085.png" width="260"><br>
+      <b>Example FTD patient</b>
+    </td>
+  </tr>
+</table>
+
+<i>SHAP value visualisations for representative FTD vs. CN subjects.</i>
+
+</div>
 
 ## Usage
 
