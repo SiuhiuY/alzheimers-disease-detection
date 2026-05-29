@@ -1,0 +1,9 @@
+# --- Python: normalise line endings ---
+*.py text eol=lf
+*.ipynb text eol=lf
+
+# --- Scripts ---
+*.sh text eol=lf
+
+# --- Documentation ---
+*.md text eol=lf
