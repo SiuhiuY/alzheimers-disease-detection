@@ -94,7 +94,7 @@ The spatial patterns learned in the 1D EENNet model were visualised by extractin
 </p>
 
 #### 2D model SHAP explainability
-For the 2D models, SHAP was applied to representative subjects from the AD vs. CN and FTD vs. CN classification tasks to visualise the contribution of spatial regions to model predictions.
+For the 2D models, SHAP was applied using **SHAP GradientExplainer**, a method suited for explaining neural network predictions. Representative subjects from the AD vs. CN and FTD vs. CN classification tasks were analysed to visualise the contribution of spatial regions to model predictions.
 
 ##### AD vs. CN
 
