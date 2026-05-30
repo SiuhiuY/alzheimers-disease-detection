@@ -83,7 +83,7 @@ Resting-state eyes-closed EEG recordings with 19 channels at 500Hz sampling rate
 ### Explainability
 
 #### EEGNet spatial filters
-The spatial patterns learned in the 1D EENNet model were visualised by extracting learned spatial filters from the depthwise convolution layer.
+The spatial patterns learned in the 1D EEGNet model were visualised by extracting learned spatial filters from the depthwise convolution layer.
 
 <p align="center">
   <img src="docs/EEGNet_AD_CN_filter_1.png" width="200">
@@ -94,11 +94,11 @@ The spatial patterns learned in the 1D EENNet model were visualised by extractin
 </p>
 
 #### 2D model SHAP explainability
-For the 2D models, SHAP was applied using **SHAP GradientExplainer**, a method suited for explaining neural network predictions. Representative subjects from the AD vs. CN and FTD vs. CN classification tasks were analysed to visualise the contribution of spatial regions to model predictions.
+For the 2D models, SHAP was applied using **SHAP GradientExplainer**, a method suited for explaining the neural network's predictions. Representative subjects from the AD vs. CN and FTD vs. CN classification tasks were analysed to visualise the contribution of spatial regions to model predictions.
 
 ##### AD vs. CN
 
-For AD vs. CN, clearer spatial patterns and larger SHAP magnitudes were observed. Positive SHAP values (red) indicate regions contributing toward the AD prediction, while negative values (blue) indicate regions contributing away from the AD class. Some subjects exhibited concentrated high-value regions, suggesting that the model identified meaningful localised EEG patterns.
+For AD vs. CN, clearer spatial patterns and larger SHAP magnitudes were observed. Positive SHAP values (red) indicate regions contributing toward the AD prediction, while negative values (blue) indicate regions contributing against it. Some subjects exhibited concentrated high-value regions, suggesting that the model identified meaningful localised EEG patterns.
 
 <div align="center">
 
