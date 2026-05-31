@@ -234,3 +234,14 @@ python main.py
 
 
 ## References
+#### EEGNet
+Lawhern, V.J., Solon, A.J., Waytowich, N.R., Gordon, S.M., Hung, C.P., & Lance, B.J. (2018). EEGNet: A Compact Convolutional Network for EEG-based Brain-Computer Interfaces. *Journal of Neural Engineering*, 15(5), 056013.
+https://github.com/vlawhern/arl-eegmodels
+
+#### DICE-Net
+Miltiadous, A., Gionanidis, E., Tzimourta, K.D., Giannakeas, N., & Tzallas, A.T. (2023). DICE-Net: A Novel Convolution-Transformer Architecture for Alzheimer Detection in EEG Signals. *IEEE Access*, 11, 71840–71858.
+https://github.com/souvlasvegas/EEG-DICE-net
+
+#### ST-SHAP
+Miao, M., Liang, J., Sheng, Z., Liu, W., Xu, B., & Hu, W. (2025). ST-SHAP: A Hierarchical and Explainable Attention Network for Emotional EEG Representation Learning and Decoding. *Journal of Neuroscience Methods*, 414, 110317.
+https://github.com/surnfnogl/ST_SHAP_code
