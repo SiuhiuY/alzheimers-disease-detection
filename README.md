@@ -164,16 +164,17 @@ In contrast, the FTD vs. CN task showed lower SHAP magnitudes and more scattered
 ## Usage
 
 ### Dataset Download
-Run the following command from the project root:
+From the project root, run:
 ```
-./scripts/download_data.sh
+make download
 ```
-This will automatically:
+This will automatically
 - create the ```data/``` directory
 - execute the official OpenNeuro download script
 - download the dataset into ```data/```
+- verify the downloaded dataset and report the number of EEG recordings and the dataset size
 
-After running the download, the dataset will be stored as:
+After downloading, the directory structure will be:
 ```
 ├── data/
 │   ├── ds004504-1.0.8/                  # data version
